@@ -64,6 +64,29 @@ func (c *Client) GetCustomerByDocument(ctx context.Context, document string) (*d
 	return &rows[0], nil
 }
 
+func (c *Client) GetCustomerByCPF(ctx context.Context, cpf string) (*domain.CustomerProfile, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.GetCustomerByCPF")
+	defer span.End()
+
+	path := fmt.Sprintf("customer_profiles?representante_cpf=eq.%s&limit=1", cpf)
+	body, err := c.doRequest(ctx, http.MethodGet, path)
+	if err != nil {
+		return nil, err
+	}
+	if body == nil || string(body) == "[]" {
+		return nil, nil
+	}
+
+	var rows []domain.CustomerProfile
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, fmt.Errorf("decode customer_profiles: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	return &rows[0], nil
+}
+
 func (c *Client) GetCustomerByBankDetails(ctx context.Context, document, agencia, conta string) (*domain.CustomerProfile, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.GetCustomerByBankDetails")
 	defer span.End()

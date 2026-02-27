@@ -110,6 +110,7 @@ type AuthStore interface {
 	GetCustomerByID(ctx context.Context, customerID string) (*domain.CustomerProfile, error)
 	GetCustomerByDocument(ctx context.Context, document string) (*domain.CustomerProfile, error)
 	GetCustomerByBankDetails(ctx context.Context, document, agencia, conta string) (*domain.CustomerProfile, error)
+	GetCustomerByCPF(ctx context.Context, cpf string) (*domain.CustomerProfile, error)
 
 	// Registration
 	CreateCustomerWithAccount(ctx context.Context, req *domain.RegisterRequest, passwordHash string) (*domain.RegisterResponse, error)

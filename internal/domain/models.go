@@ -931,9 +931,7 @@ type RegisterResponse struct {
 
 // LoginRequest is the body for POST /v1/auth/login.
 type LoginRequest struct {
-	Document string `json:"document"`
-	Agencia  string `json:"agencia"`
-	Conta    string `json:"conta"`
+	CPF      string `json:"cpf"`
 	Password string `json:"password"`
 }
 

@@ -104,10 +104,10 @@ func (s *AuthService) Register(ctx context.Context, req *domain.RegisterRequest)
 func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error) {
 	ctx, span := authTracer.Start(ctx, "AuthService.Login")
 	defer span.End()
-	span.SetAttributes(attribute.String("document", req.Document))
+	span.SetAttributes(attribute.String("cpf", req.CPF))
 
-	// Find customer by document + agencia + conta
-	profile, err := s.store.GetCustomerByBankDetails(ctx, req.Document, req.Agencia, req.Conta)
+	// Find customer by representante CPF
+	profile, err := s.store.GetCustomerByCPF(ctx, req.CPF)
 	if err != nil {
 		return nil, fmt.Errorf("get customer: %w", err)
 	}
@@ -119,7 +119,7 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	if profile.AccountStatus == "blocked" {
 		s.logger.Warn("login: account blocked",
 			zap.String("customer_id", profile.CustomerID),
-			zap.String("document", req.Document),
+			zap.String("cpf", req.CPF),
 		)
 		return nil, &domain.ErrAccountBlocked{Status: "blocked"}
 	}
