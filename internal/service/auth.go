@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -134,6 +135,16 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	// Get credentials
 	cred, err := s.store.GetCredentials(ctx, profile.CustomerID)
 	if err != nil {
+		var notFound *domain.ErrNotFound
+		if errors.As(err, &notFound) {
+			// Corrupted registration: profile exists but no credentials were saved.
+			// Treat as invalid credentials to avoid leaking internal state.
+			s.logger.Warn("login: credentials not found for existing profile (corrupted registration)",
+				zap.String("customer_id", profile.CustomerID),
+				zap.String("cpf", req.CPF),
+			)
+			return nil, &domain.ErrUnauthorized{Message: "Credenciais inválidas"}
+		}
 		return nil, fmt.Errorf("get credentials: %w", err)
 	}
 
