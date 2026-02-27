@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
@@ -1196,8 +1197,47 @@ func listPixKeysHandler(svc *service.BankingService, logger *zap.Logger) http.Ha
 		if keys == nil {
 			keys = []domain.PixKey{}
 		}
-		writeJSON(w, http.StatusOK, keys)
+		// Build response with formatted display values
+		type pixKeyDisplay struct {
+			domain.PixKey
+			FormattedValue string `json:"formatted_value"`
+		}
+		result := make([]pixKeyDisplay, len(keys))
+		for i, k := range keys {
+			result[i] = pixKeyDisplay{
+				PixKey:         k,
+				FormattedValue: formatKeyValue(k.KeyType, k.KeyValue),
+			}
+		}
+		writeJSON(w, http.StatusOK, result)
 	}
+}
+
+// formatKeyValue returns a human-readable formatted version of a pix key value.
+func formatKeyValue(keyType, value string) string {
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, value)
+	switch keyType {
+	case "cnpj":
+		if len(digits) == 14 {
+			return fmt.Sprintf("%s.%s.%s/%s-%s", digits[:2], digits[2:5], digits[5:8], digits[8:12], digits[12:14])
+		}
+	case "cpf":
+		if len(digits) == 11 {
+			return fmt.Sprintf("%s.%s.%s-%s", digits[:3], digits[3:6], digits[6:9], digits[9:11])
+		}
+	case "phone":
+		if len(digits) == 11 {
+			return fmt.Sprintf("(%s) %s-%s", digits[:2], digits[2:7], digits[7:11])
+		} else if len(digits) == 13 { // +55...
+			return fmt.Sprintf("+%s (%s) %s-%s", digits[:2], digits[2:4], digits[4:9], digits[9:13])
+		}
+	}
+	return value
 }
 
 func deletePixKeyHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {

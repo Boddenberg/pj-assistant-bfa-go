@@ -985,9 +985,12 @@ type DevGenerateTransactionsRequest struct {
 
 // DevGenerateTransactionsResponse is returned by POST /v1/dev/generate-transactions.
 type DevGenerateTransactionsResponse struct {
-	Success   bool   `json:"success"`
-	Generated int    `json:"generated"`
-	Message   string `json:"message"`
+	Success   bool    `json:"success"`
+	Generated int     `json:"generated"`
+	Income    float64 `json:"income"`
+	Expenses  float64 `json:"expenses"`
+	NetImpact float64 `json:"netImpact"`
+	Message   string  `json:"message"`
 }
 
 // DevAddCardPurchaseRequest is the body for POST /v1/dev/add-card-purchase.

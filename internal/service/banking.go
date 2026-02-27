@@ -1529,6 +1529,8 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 
 	generated := 0
 	netImpact := 0.0
+	totalIncome := 0.0
+	totalExpenses := 0.0
 	now := time.Now()
 
 	for i := 0; i < req.Count; i++ {
@@ -1558,6 +1560,11 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		}
 		generated++
 		netImpact += amount // amount is already negative for debits
+		if amount > 0 {
+			totalIncome += amount
+		} else {
+			totalExpenses += -amount // store as positive value
+		}
 	}
 
 	// Update the account balance to reflect the net impact of generated transactions
@@ -1583,6 +1590,9 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 	return &domain.DevGenerateTransactionsResponse{
 		Success:   true,
 		Generated: generated,
+		Income:    totalIncome,
+		Expenses:  totalExpenses,
+		NetImpact: netImpact,
 		Message:   fmt.Sprintf("%d transações geradas com sucesso", generated),
 	}, nil
 }
