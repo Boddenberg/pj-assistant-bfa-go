@@ -116,6 +116,47 @@ func (s *BankingService) DeletePixKey(ctx context.Context, customerID, keyID str
 	return nil
 }
 
+// DeletePixKeyByValue removes a Pix key by its type and value.
+func (s *BankingService) DeletePixKeyByValue(ctx context.Context, customerID, keyType, keyValue string) error {
+	ctx, span := bankTracer.Start(ctx, "BankingService.DeletePixKeyByValue")
+	defer span.End()
+
+	// Lookup the key to get its ID
+	key, err := s.store.LookupPixKey(ctx, keyType, keyValue)
+	if err != nil {
+		return err
+	}
+	// Verify it belongs to the customer
+	if key.CustomerID != customerID {
+		return &domain.ErrNotFound{Resource: "pix_key", ID: keyValue}
+	}
+
+	return s.store.DeletePixKey(ctx, customerID, key.ID)
+}
+
+// GetCreditLimit returns the total credit limit for a customer's cards.
+func (s *BankingService) GetCreditLimit(ctx context.Context, customerID string) (float64, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.GetCreditLimit")
+	defer span.End()
+
+	cards, err := s.store.ListCreditCards(ctx, customerID)
+	if err != nil {
+		return 0, err
+	}
+	if len(cards) == 0 {
+		return 0, &domain.ErrNotFound{Resource: "credit_card", ID: customerID}
+	}
+
+	// Return the highest credit limit among all cards
+	var maxLimit float64
+	for _, c := range cards {
+		if c.CreditLimit > maxLimit {
+			maxLimit = c.CreditLimit
+		}
+	}
+	return maxLimit, nil
+}
+
 func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.CreatePixTransfer")
 	defer span.End()
@@ -145,6 +186,12 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 	account, err := s.store.GetAccount(ctx, customerID, req.SourceAccountID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Block self-transfer: check if destination key belongs to the same customer
+	destKey, lookupErr := s.store.LookupPixKey(ctx, req.DestinationKeyType, req.DestinationKeyValue)
+	if lookupErr == nil && destKey != nil && destKey.CustomerID == customerID {
+		return nil, &domain.ErrValidation{Field: "recipientKey", Message: "Não é possível transferir para você mesmo"}
 	}
 
 	// Check limits
@@ -1177,6 +1224,7 @@ func (s *BankingService) RegisterPixKey(ctx context.Context, req *domain.PixKeyR
 		KeyID:     created.ID,
 		KeyType:   created.KeyType,
 		KeyValue:  created.KeyValue,
+		Key:       created.KeyValue,
 		Status:    created.Status,
 		CreatedAt: created.CreatedAt.Format(time.RFC3339),
 	}, nil
@@ -1329,7 +1377,7 @@ func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBa
 		"date":        now.Format(time.RFC3339),
 		"description": fmt.Sprintf("DevTools — Crédito de saldo R$ %.2f", req.Amount),
 		"amount":      req.Amount,
-		"type":        "credit",
+		"type":        "transfer_in",
 		"category":    "devtools",
 	}
 	if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
@@ -1414,6 +1462,13 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 
 	// Default months = 1, max 12
 	months := req.Months
+	// If period is set, it overrides months
+	switch req.Period {
+	case "current-month":
+		months = 1
+	case "last-12-months":
+		months = 12
+	}
 	if months <= 0 {
 		months = 1
 	}
@@ -1432,9 +1487,11 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		{"pix_received", false, []string{"Pix recebido - Tech Corp", "Pix recebido - Vendas Online", "Pix recebido - Cliente ABC"}, "recebimento"},
 		{"debit_purchase", true, []string{"Supermercado Extra", "Posto Shell", "Farmácia São Paulo", "Restaurante Sabor"}, "compras"},
 		{"credit_purchase", true, []string{"Amazon AWS", "Google Cloud", "Material Escritório", "Uber Business"}, "tecnologia"},
-		{"transfer_in", false, []string{"TED recebida - Fornecedor A", "DOC recebido - Partner B"}, "recebimento"},
-		{"transfer_out", true, []string{"TED enviada - Aluguel", "TED enviada - Fornecedor"}, "despesas"},
+		{"transfer_in", false, []string{"TED recebida - Fornecedor A", "DOC recebido - Partner B", "Transferência recebida - Cliente"}, "recebimento"},
+		{"transfer_out", true, []string{"TED enviada - Aluguel", "TED enviada - Fornecedor", "Transferência - Pagamento"}, "despesas"},
 		{"bill_payment", true, []string{"Conta de luz", "Conta de telefone", "Internet Fibra", "IPTU"}, "contas"},
+		{"invoice_payment", true, []string{"Pagamento fatura cartão", "Fatura cartão corporativo"}, "cartao"},
+		{"adjustment", false, []string{"Estorno - Compra duplicada", "Ajuste de saldo", "Correção bancária"}, "ajuste"},
 	}
 
 	generated := 0

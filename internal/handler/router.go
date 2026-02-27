@@ -79,6 +79,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Delete("/pix/schedule/{scheduleId}", pixScheduleDeleteHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/pix/scheduled", pixScheduledListHandler(bankSvc, logger))
 		r.Post("/pix/credit-card", pixCreditCardHandler(bankSvc, logger))
+		r.Delete("/pix/keys", pixKeyDeleteByValueHandler(bankSvc, logger))
 
 		// =============================================
 		// 6. 📄 Pagamento de Boletos
@@ -91,6 +92,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// 7. 💳 Cartão de Crédito
 		// =============================================
 		r.Get("/customers/{customerId}/cards", listCardsHandler(bankSvc, logger))
+		r.Get("/customers/{customerId}/credit-limit", creditLimitHandler(bankSvc, logger))
 		r.Post("/cards/request", cardRequestHandler(bankSvc, logger))
 		r.Get("/cards/{cardId}/invoices/{month}", cardInvoiceByMonthHandler(bankSvc, logger))
 		r.Post("/cards/{cardId}/block", cardBlockHandler(bankSvc, logger))
@@ -1067,6 +1069,51 @@ func deletePixKeyHandler(svc *service.BankingService, logger *zap.Logger) http.H
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "Chave Pix excluída com sucesso"})
+	}
+}
+
+func pixKeyDeleteByValueHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "DELETE /v1/pix/keys")
+		defer span.End()
+
+		var req struct {
+			CustomerID string `json:"customerId"`
+			KeyType    string `json:"keyType"`
+			KeyValue   string `json:"keyValue"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if req.CustomerID == "" || req.KeyType == "" || req.KeyValue == "" {
+			writeError(w, http.StatusBadRequest, "customerId, keyType and keyValue are required")
+			return
+		}
+
+		if err := svc.DeletePixKeyByValue(ctx, req.CustomerID, req.KeyType, req.KeyValue); err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "Chave Pix removida com sucesso."})
+	}
+}
+
+func creditLimitHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "GET /v1/customers/{customerId}/credit-limit")
+		defer span.End()
+
+		customerID := chi.URLParam(r, "customerId")
+		limit, err := svc.GetCreditLimit(ctx, customerID)
+		if err != nil {
+			// If no cards found, return 0
+			writeJSON(w, http.StatusOK, map[string]any{"creditLimit": 0})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"creditLimit": limit})
 	}
 }
 

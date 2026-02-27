@@ -88,7 +88,7 @@ type Transaction struct {
 	ID           string    `json:"id"`
 	Date         time.Time `json:"date"`
 	Amount       float64   `json:"amount"`
-	Type         string    `json:"type"` // credit, debit
+	Type         string    `json:"type"` // pix_sent, pix_received, debit_purchase, credit_purchase, transfer_in, transfer_out, bill_payment, invoice_payment, adjustment
 	Category     string    `json:"category"`
 	Description  string    `json:"description"`
 	Counterparty string    `json:"counterparty,omitempty"`
@@ -921,6 +921,7 @@ type PixKeyRegisterResponse struct {
 	KeyID     string `json:"keyId"`
 	KeyType   string `json:"keyType"`
 	KeyValue  string `json:"keyValue"`
+	Key       string `json:"key"`
 	Status    string `json:"status"`
 	CreatedAt string `json:"createdAt"`
 }
@@ -979,6 +980,7 @@ type DevGenerateTransactionsRequest struct {
 	CustomerID string `json:"customerId"`
 	Count      int    `json:"count"`
 	Months     int    `json:"months"` // how many months back to spread transactions (default 1, max 12)
+	Period     string `json:"period"` // "current-month" or "last-12-months" (overrides months if set)
 }
 
 // DevGenerateTransactionsResponse is returned by POST /v1/dev/generate-transactions.
