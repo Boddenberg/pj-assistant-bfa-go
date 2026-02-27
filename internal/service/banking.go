@@ -1098,15 +1098,13 @@ func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBa
 	// Record the transaction for extrato/fatura
 	now := time.Now()
 	tx := map[string]any{
-		"id":           uuid.New().String(),
-		"customer_id":  req.CustomerID,
-		"account_id":   acct.ID,
-		"date":         now.Format(time.RFC3339),
-		"description":  "DevTools — Crédito de saldo",
-		"amount":       req.Amount,
-		"type":         "credit",
-		"category":     "devtools",
-		"counterparty": "DevTools",
+		"id":          uuid.New().String(),
+		"customer_id": req.CustomerID,
+		"date":        now.Format(time.RFC3339),
+		"description": fmt.Sprintf("DevTools — Crédito de saldo R$ %.2f", req.Amount),
+		"amount":      req.Amount,
+		"type":        "credit",
+		"category":    "devtools",
 	}
 	if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
 		s.logger.Error("DEV: failed to record balance transaction",
@@ -1141,34 +1139,27 @@ func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevS
 		return nil, &domain.ErrValidation{Field: "limit", Message: "deve ser positivo"}
 	}
 
-	// Get account for transaction record
-	acct, acctErr := s.store.GetPrimaryAccount(ctx, req.CustomerID)
-
 	err := s.store.UpdateCreditCardLimit(ctx, req.CustomerID, req.Limit)
 	if err != nil {
 		return nil, err
 	}
 
 	// Record the transaction for extrato/fatura
-	if acctErr == nil {
-		now := time.Now()
-		tx := map[string]any{
-			"id":           uuid.New().String(),
-			"customer_id":  req.CustomerID,
-			"account_id":   acct.ID,
-			"date":         now.Format(time.RFC3339),
-			"description":  fmt.Sprintf("DevTools — Limite de crédito ajustado para R$ %.2f", req.Limit),
-			"amount":       0,
-			"type":         "adjustment",
-			"category":     "devtools",
-			"counterparty": "DevTools",
-		}
-		if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
-			s.logger.Error("DEV: failed to record credit limit transaction",
-				zap.String("customer_id", req.CustomerID),
-				zap.Error(txErr),
-			)
-		}
+	now := time.Now()
+	tx := map[string]any{
+		"id":          uuid.New().String(),
+		"customer_id": req.CustomerID,
+		"date":        now.Format(time.RFC3339),
+		"description": fmt.Sprintf("DevTools — Limite de crédito ajustado para R$ %.2f", req.Limit),
+		"amount":      0,
+		"type":        "adjustment",
+		"category":    "devtools",
+	}
+	if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
+		s.logger.Error("DEV: failed to record credit limit transaction",
+			zap.String("customer_id", req.CustomerID),
+			zap.Error(txErr),
+		)
 	}
 
 	s.logger.Info("DEV: credit limit updated",
@@ -1193,12 +1184,6 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 	}
 	if req.Count <= 0 || req.Count > 100 {
 		return nil, &domain.ErrValidation{Field: "count", Message: "deve ser entre 1 e 100"}
-	}
-
-	// Get primary account
-	acct, err := s.store.GetPrimaryAccount(ctx, req.CustomerID)
-	if err != nil {
-		return nil, err
 	}
 
 	txTypes := []struct {
@@ -1231,15 +1216,13 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		}
 
 		tx := map[string]any{
-			"id":           uuid.New().String(),
-			"customer_id":  req.CustomerID,
-			"account_id":   acct.ID,
-			"date":         txDate.Format(time.RFC3339),
-			"description":  desc,
-			"amount":       amount,
-			"type":         txInfo.Type,
-			"category":     txInfo.Category,
-			"counterparty": strings.TrimPrefix(strings.TrimPrefix(desc, "Pix enviado - "), "Pix recebido - "),
+			"id":          uuid.New().String(),
+			"customer_id": req.CustomerID,
+			"date":        txDate.Format(time.RFC3339),
+			"description": desc,
+			"amount":      amount,
+			"type":        txInfo.Type,
+			"category":    txInfo.Category,
 		}
 
 		if err := s.store.InsertTransaction(ctx, tx); err != nil {
