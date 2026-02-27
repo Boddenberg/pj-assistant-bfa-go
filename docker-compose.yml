@@ -1,0 +1,83 @@
+# ============================================================
+# PJ Assistant - Full Stack (BFA + Agent + Observability)
+# ============================================================
+
+services:
+  # --- BFA (Go) ---
+  bfa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - LOG_LEVEL=info
+      - AGENT_API_URL=http://agent:8090
+      - OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4317
+      - CACHE_TTL=5m
+      - MAX_RETRIES=3
+      - MAX_CONCURRENCY=50
+      - USE_SUPABASE=${USE_SUPABASE:-true}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      # Fallback HTTP APIs (used when USE_SUPABASE=false)
+      - PROFILE_API_URL=http://mock-apis:8081
+      - TRANSACTIONS_API_URL=http://mock-apis:8081
+    depends_on:
+      - agent
+    networks:
+      - app-network
+
+  # --- AI Agent (Python) ---
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-placeholder}
+      - OPENAI_MODEL=gpt-4o-mini
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - CHROMA_PERSIST_DIR=/app/data/chroma
+      - KNOWLEDGE_BASE_DIR=/app/data/knowledge_base
+      - USE_SUPABASE=${USE_SUPABASE:-true}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - LOG_LEVEL=info
+    volumes:
+      - agent-data:/app/data/chroma
+    networks:
+      - app-network
+
+  # --- Jaeger (Tracing) ---
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    ports:
+      - "16686:16686"  # UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - app-network
+
+  # --- Prometheus (Metrics) ---
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - app-network
+
+volumes:
+  agent-data:
+
+networks:
+  app-network:
+    driver: bridge
