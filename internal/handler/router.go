@@ -132,6 +132,12 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// 9. 🔐 Autenticação
 		// =============================================
 		r.Route("/auth", func(r chi.Router) {
+			if authSvc == nil {
+				r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					writeError(w, http.StatusServiceUnavailable, "auth service unavailable: Supabase not configured")
+				}))
+				return
+			}
 			// Public routes
 			r.Post("/register", authRegisterHandler(authSvc, logger))
 			r.Post("/login", authLoginHandler(authSvc, logger))
@@ -150,11 +156,13 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// =============================================
 		// 10. 👤 Profile & Representative (protected)
 		// =============================================
-		r.Group(func(r chi.Router) {
-			r.Use(JWTAuthMiddleware(authSvc, logger))
-			r.Put("/customers/{customerId}/profile", updateProfileHandler(authSvc, logger))
-			r.Put("/customers/{customerId}/representative", updateRepresentativeHandler(authSvc, logger))
-		})
+		if authSvc != nil {
+			r.Group(func(r chi.Router) {
+				r.Use(JWTAuthMiddleware(authSvc, logger))
+				r.Put("/customers/{customerId}/profile", updateProfileHandler(authSvc, logger))
+				r.Put("/customers/{customerId}/representative", updateRepresentativeHandler(authSvc, logger))
+			})
+		}
 	})
 
 	return r
