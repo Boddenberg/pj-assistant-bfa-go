@@ -1383,8 +1383,8 @@ func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBa
 	if req.CustomerID == "" {
 		return nil, &domain.ErrValidation{Field: "customerId", Message: "required"}
 	}
-	if req.Amount <= 0 {
-		return nil, &domain.ErrValidation{Field: "amount", Message: "deve ser positivo"}
+	if req.Amount == 0 {
+		return nil, &domain.ErrValidation{Field: "amount", Message: "não pode ser zero"}
 	}
 
 	acct, err := s.store.UpdateAccountBalance(ctx, req.CustomerID, req.Amount)
@@ -1394,13 +1394,19 @@ func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBa
 
 	// Record the transaction for extrato/fatura
 	now := time.Now()
+	txType := "transfer_in"
+	txDesc := fmt.Sprintf("DevTools — Crédito de saldo R$ %.2f", req.Amount)
+	if req.Amount < 0 {
+		txType = "transfer_out"
+		txDesc = fmt.Sprintf("DevTools — Débito de saldo R$ %.2f", -req.Amount)
+	}
 	tx := map[string]any{
 		"id":          uuid.New().String(),
 		"customer_id": req.CustomerID,
 		"date":        now.Format(time.RFC3339),
-		"description": fmt.Sprintf("DevTools — Crédito de saldo R$ %.2f", req.Amount),
+		"description": txDesc,
 		"amount":      req.Amount,
-		"type":        "transfer_in",
+		"type":        txType,
 		"category":    "devtools",
 	}
 	if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
@@ -1411,16 +1417,20 @@ func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBa
 		// Don't fail the whole operation — balance was already updated
 	}
 
-	s.logger.Info("DEV: balance added",
+	s.logger.Info("DEV: balance adjusted",
 		zap.String("customer_id", req.CustomerID),
 		zap.Float64("amount", req.Amount),
 		zap.Float64("new_balance", acct.Balance),
 	)
 
+	msg := fmt.Sprintf("R$ %.2f adicionados ao saldo", req.Amount)
+	if req.Amount < 0 {
+		msg = fmt.Sprintf("R$ %.2f debitados do saldo", -req.Amount)
+	}
 	return &domain.DevAddBalanceResponse{
 		Success:    true,
 		NewBalance: acct.Balance,
-		Message:    fmt.Sprintf("R$ %.2f adicionados ao saldo", req.Amount),
+		Message:    msg,
 	}, nil
 }
 
@@ -1518,6 +1528,7 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 	}
 
 	generated := 0
+	netImpact := 0.0
 	now := time.Now()
 
 	for i := 0; i < req.Count; i++ {
@@ -1546,6 +1557,22 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 			continue
 		}
 		generated++
+		netImpact += amount // amount is already negative for debits
+	}
+
+	// Update the account balance to reflect the net impact of generated transactions
+	if netImpact != 0 {
+		if _, balErr := s.store.UpdateAccountBalance(ctx, req.CustomerID, netImpact); balErr != nil {
+			s.logger.Error("DEV: failed to update balance after generating transactions",
+				zap.String("customer_id", req.CustomerID),
+				zap.Float64("net_impact", netImpact),
+				zap.Error(balErr),
+			)
+		} else {
+			s.logger.Info("DEV: balance adjusted after transaction generation",
+				zap.Float64("net_impact", netImpact),
+			)
+		}
 	}
 
 	s.logger.Info("DEV: transactions generated",

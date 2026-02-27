@@ -994,8 +994,8 @@ func (c *Client) GetCustomerName(ctx context.Context, customerID string) (string
 	}
 
 	var rows []struct {
-		CompanyName      string `json:"company_name"`
-		Name             string `json:"name"`
+		CompanyName       string `json:"company_name"`
+		Name              string `json:"name"`
 		RepresentanteName string `json:"representante_name"`
 	}
 	if err := json.Unmarshal(body, &rows); err != nil {
