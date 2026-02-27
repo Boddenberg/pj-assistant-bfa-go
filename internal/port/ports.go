@@ -43,6 +43,7 @@ type BankingStore interface {
 	// PIX Keys
 	ListPixKeys(ctx context.Context, customerID string) ([]domain.PixKey, error)
 	LookupPixKey(ctx context.Context, keyType, keyValue string) (*domain.PixKey, error)
+	LookupPixKeyByValue(ctx context.Context, keyValue string) (*domain.PixKey, error)
 	CreatePixKey(ctx context.Context, key *domain.PixKey) (*domain.PixKey, error)
 	DeletePixKey(ctx context.Context, customerID, keyID string) error
 

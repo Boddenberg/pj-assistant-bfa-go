@@ -78,11 +78,54 @@ func (s *BankingService) LookupPixKey(ctx context.Context, keyType, keyValue str
 	ctx, span := bankTracer.Start(ctx, "BankingService.LookupPixKey")
 	defer span.End()
 
-	if keyType == "" || keyValue == "" {
-		return nil, &domain.ErrValidation{Field: "key/keyType", Message: "both key and keyType are required"}
+	if keyValue == "" {
+		return nil, &domain.ErrValidation{Field: "key", Message: "key is required"}
 	}
 
-	return s.store.LookupPixKey(ctx, keyType, keyValue)
+	// Auto-detect keyType from value format if not provided
+	if keyType == "" {
+		keyType = detectPixKeyType(keyValue)
+	}
+
+	// If we have a keyType, search with it; otherwise search by value only
+	if keyType != "" {
+		return s.store.LookupPixKey(ctx, keyType, keyValue)
+	}
+	return s.store.LookupPixKeyByValue(ctx, keyValue)
+}
+
+// detectPixKeyType infers the pix key type from the value format.
+func detectPixKeyType(value string) string {
+	// Strip non-digit chars for numeric checks
+	digits := ""
+	for _, r := range value {
+		if r >= '0' && r <= '9' {
+			digits += string(r)
+		}
+	}
+
+	// CNPJ: 14 digits
+	if len(digits) == 14 {
+		return "cnpj"
+	}
+	// CPF: 11 digits
+	if len(digits) == 11 && !strings.HasPrefix(value, "+") {
+		return "cpf"
+	}
+	// Phone: starts with + or has 10-13 digits
+	if strings.HasPrefix(value, "+") || (len(digits) >= 10 && len(digits) <= 13) {
+		return "phone"
+	}
+	// Email
+	if strings.Contains(value, "@") {
+		return "email"
+	}
+	// UUID-like → random
+	if len(value) == 36 && strings.Count(value, "-") == 4 {
+		return "random"
+	}
+	// Could not determine
+	return ""
 }
 
 // GetCustomerName resolves a customer ID to a human-readable name.

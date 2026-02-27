@@ -114,6 +114,27 @@ func (c *Client) LookupPixKey(ctx context.Context, keyType, keyValue string) (*d
 	return &rows[0], nil
 }
 
+// LookupPixKeyByValue searches for a pix key by value only (no key_type filter).
+func (c *Client) LookupPixKeyByValue(ctx context.Context, keyValue string) (*domain.PixKey, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.LookupPixKeyByValue")
+	defer span.End()
+
+	path := fmt.Sprintf("pix_keys?key_value=eq.%s&status=eq.active&limit=1", keyValue)
+	body, err := c.doRequest(ctx, http.MethodGet, path)
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []domain.PixKey
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, fmt.Errorf("decode pix_key lookup by value: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, &domain.ErrNotFound{Resource: "pix_key", ID: keyValue}
+	}
+	return &rows[0], nil
+}
+
 // --- PIX Transfers ---
 
 func (c *Client) CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error) {
