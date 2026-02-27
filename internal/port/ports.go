@@ -122,6 +122,7 @@ type BankingStore interface {
 	// Credit card transaction insert (dev tools)
 	InsertCreditCardTransaction(ctx context.Context, data map[string]any) error
 	UpdateCreditCardUsedLimit(ctx context.Context, cardID string, usedLimit, availableLimit float64) error
+	UpdateCreditCardPixCreditUsed(ctx context.Context, cardID string, pixCreditUsed float64) error
 
 	// Credit card invoice update
 	UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, status string) error

@@ -1194,6 +1194,16 @@ func (c *Client) UpdateCreditCardUsedLimit(ctx context.Context, cardID string, u
 	})
 }
 
+// UpdateCreditCardPixCreditUsed patches pix_credit_used on a card.
+func (c *Client) UpdateCreditCardPixCreditUsed(ctx context.Context, cardID string, pixCreditUsed float64) error {
+	ctx, span := tracer.Start(ctx, "Supabase.UpdateCreditCardPixCreditUsed")
+	defer span.End()
+
+	return c.doPatch(ctx, fmt.Sprintf("credit_cards?id=eq.%s", cardID), map[string]any{
+		"pix_credit_used": pixCreditUsed,
+	})
+}
+
 // --- Invoice Status Update ---
 
 func (c *Client) UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, status string) error {

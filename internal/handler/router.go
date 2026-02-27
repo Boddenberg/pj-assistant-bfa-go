@@ -490,11 +490,14 @@ func pixTransferHandler(bankSvc *service.BankingService, logger *zap.Logger) htt
 		defer span.End()
 
 		var apiReq struct {
-			CustomerID       string  `json:"customerId"`
-			RecipientKey     string  `json:"recipientKey"`
-			RecipientKeyType string  `json:"recipientKeyType"`
-			Amount           float64 `json:"amount"`
-			Description      string  `json:"description,omitempty"`
+			CustomerID             string  `json:"customerId"`
+			RecipientKey           string  `json:"recipientKey"`
+			RecipientKeyType       string  `json:"recipientKeyType"`
+			Amount                 float64 `json:"amount"`
+			Description            string  `json:"description,omitempty"`
+			FundedBy               string  `json:"fundedBy,omitempty"`
+			CreditCardID           string  `json:"creditCardId,omitempty"`
+			CreditCardInstallments int     `json:"installments,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&apiReq); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
@@ -507,14 +510,21 @@ func pixTransferHandler(bankSvc *service.BankingService, logger *zap.Logger) htt
 			return
 		}
 
+		fundedBy := apiReq.FundedBy
+		if fundedBy == "" {
+			fundedBy = "balance"
+		}
+
 		req := &domain.PixTransferRequest{
-			IdempotencyKey:      uuid.New().String(),
-			SourceAccountID:     account.ID,
-			DestinationKeyType:  apiReq.RecipientKeyType,
-			DestinationKeyValue: apiReq.RecipientKey,
-			Amount:              apiReq.Amount,
-			Description:         apiReq.Description,
-			FundedBy:            "balance",
+			IdempotencyKey:         uuid.New().String(),
+			SourceAccountID:        account.ID,
+			DestinationKeyType:     apiReq.RecipientKeyType,
+			DestinationKeyValue:    apiReq.RecipientKey,
+			Amount:                 apiReq.Amount,
+			Description:            apiReq.Description,
+			FundedBy:               fundedBy,
+			CreditCardID:           apiReq.CreditCardID,
+			CreditCardInstallments: apiReq.CreditCardInstallments,
 		}
 
 		transfer, err := bankSvc.CreatePixTransfer(ctx, apiReq.CustomerID, req)

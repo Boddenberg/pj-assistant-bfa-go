@@ -300,34 +300,79 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 
 	now := time.Now()
 
-	// ── 1. Debit sender balance and record pix_sent transaction ──
-	if req.FundedBy == "balance" {
+	// ── 1. Debit sender ──
+	descSent := fmt.Sprintf("Pix enviado - %s", transfer.DestinationKeyValue)
+	if transfer.DestinationName != "" {
+		descSent = fmt.Sprintf("Pix enviado - %s", transfer.DestinationName)
+	}
+
+	if req.FundedBy == "credit_card" {
+		// ── 1a. Credit card: debit card limit + record in fatura ──
+		card, _ := s.store.GetCreditCard(ctx, customerID, req.CreditCardID)
+		if card != nil {
+			newUsed := card.UsedLimit + req.Amount
+			newAvailable := card.CreditLimit - newUsed
+			if newAvailable < 0 {
+				newAvailable = 0
+			}
+			if ulErr := s.store.UpdateCreditCardUsedLimit(ctx, card.ID, newUsed, newAvailable); ulErr != nil {
+				s.logger.Error("failed to update card used_limit after pix credit",
+					zap.String("card_id", card.ID), zap.Error(ulErr))
+			}
+			// Also update pix_credit_used on the card
+			newPixUsed := card.PixCreditUsed + req.Amount
+			if pxErr := s.store.UpdateCreditCardPixCreditUsed(ctx, card.ID, newPixUsed); pxErr != nil {
+				s.logger.Error("failed to update pix_credit_used after pix credit",
+					zap.String("card_id", card.ID), zap.Error(pxErr))
+			}
+		}
+
+		// Insert into credit_card_transactions (fatura do remetente)
+		ccTx := map[string]any{
+			"id":                  uuid.New().String(),
+			"card_id":             req.CreditCardID,
+			"customer_id":         customerID,
+			"transaction_date":    now.Format(time.RFC3339),
+			"amount":              req.Amount,
+			"merchant_name":       descSent,
+			"category":            "pix_credito",
+			"description":         descSent,
+			"installments":        req.CreditCardInstallments,
+			"current_installment": 1,
+			"transaction_type":    "pix_credit",
+			"status":              "confirmed",
+		}
+		if req.CreditCardInstallments <= 0 {
+			ccTx["installments"] = 1
+		}
+		if txErr := s.store.InsertCreditCardTransaction(ctx, ccTx); txErr != nil {
+			s.logger.Error("failed to record pix credit card transaction in fatura",
+				zap.String("customer_id", customerID), zap.Error(txErr))
+		}
+	} else {
+		// ── 1b. Balance: debit account + record pix_sent in extrato ──
 		if _, balErr := s.store.UpdateAccountBalance(ctx, customerID, -req.Amount); balErr != nil {
 			s.logger.Error("failed to debit sender balance after pix transfer",
 				zap.String("customer_id", customerID),
 				zap.Error(balErr),
 			)
 		}
-	}
 
-	descSent := fmt.Sprintf("Pix enviado - %s", transfer.DestinationKeyValue)
-	if transfer.DestinationName != "" {
-		descSent = fmt.Sprintf("Pix enviado - %s", transfer.DestinationName)
-	}
-	txSent := map[string]any{
-		"id":          uuid.New().String(),
-		"customer_id": customerID,
-		"date":        now.Format(time.RFC3339),
-		"description": descSent,
-		"amount":      -req.Amount,
-		"type":        "pix_sent",
-		"category":    "transferencia",
-	}
-	if txErr := s.store.InsertTransaction(ctx, txSent); txErr != nil {
-		s.logger.Error("failed to record sender pix transaction",
-			zap.String("customer_id", customerID),
-			zap.Error(txErr),
-		)
+		txSent := map[string]any{
+			"id":          uuid.New().String(),
+			"customer_id": customerID,
+			"date":        now.Format(time.RFC3339),
+			"description": descSent,
+			"amount":      -req.Amount,
+			"type":        "pix_sent",
+			"category":    "transferencia",
+		}
+		if txErr := s.store.InsertTransaction(ctx, txSent); txErr != nil {
+			s.logger.Error("failed to record sender pix transaction",
+				zap.String("customer_id", customerID),
+				zap.Error(txErr),
+			)
+		}
 	}
 
 	// ── 2. Credit destination balance and record pix_received transaction ──
