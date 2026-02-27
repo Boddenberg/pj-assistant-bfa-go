@@ -58,6 +58,10 @@ func (s *AuthService) Register(ctx context.Context, req *domain.RegisterRequest)
 	ctx, span := authTracer.Start(ctx, "AuthService.Register")
 	defer span.End()
 
+	// Normalize: strip masks so storage is always digits-only
+	req.CNPJ = normalizeDoc(req.CNPJ)
+	req.RepresentanteCPF = normalizeDoc(req.RepresentanteCPF)
+
 	// Check if CNPJ already registered
 	existing, err := s.store.GetCustomerByDocument(ctx, req.CNPJ)
 	if err != nil {
@@ -104,6 +108,9 @@ func (s *AuthService) Register(ctx context.Context, req *domain.RegisterRequest)
 func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error) {
 	ctx, span := authTracer.Start(ctx, "AuthService.Login")
 	defer span.End()
+
+	// Normalize: strip mask so lookup works regardless of format sent
+	req.CPF = normalizeDoc(req.CPF)
 	span.SetAttributes(attribute.String("cpf", req.CPF))
 
 	// Find customer by representante CPF
@@ -614,4 +621,15 @@ func maskEmail(email string) string {
 		masked += "***"
 	}
 	return masked + "@" + domainParts
+}
+
+// normalizeDoc removes all non-digit characters from a document number (CPF/CNPJ).
+func normalizeDoc(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
