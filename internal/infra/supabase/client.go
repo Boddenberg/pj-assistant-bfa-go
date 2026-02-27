@@ -16,6 +16,7 @@ import (
 	"github.com/sony/gobreaker"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
 )
 
 var tracer = otel.Tracer("supabase")
@@ -28,10 +29,11 @@ type Client struct {
 	serviceRoleKey string
 	cb             *gobreaker.CircuitBreaker
 	cfg            resilience.Config
+	logger         *zap.Logger
 }
 
 // NewClient creates a Supabase client.
-func NewClient(httpClient *http.Client, baseURL, apiKey, serviceRoleKey string, cb *gobreaker.CircuitBreaker, cfg resilience.Config) *Client {
+func NewClient(httpClient *http.Client, baseURL, apiKey, serviceRoleKey string, cb *gobreaker.CircuitBreaker, cfg resilience.Config, logger *zap.Logger) *Client {
 	return &Client{
 		httpClient:     httpClient,
 		baseURL:        baseURL,
@@ -39,6 +41,7 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, serviceRoleKey string, 
 		serviceRoleKey: serviceRoleKey,
 		cb:             cb,
 		cfg:            cfg,
+		logger:         logger,
 	}
 }
 
@@ -47,6 +50,11 @@ func (c *Client) doRequest(ctx context.Context, method, path string) ([]byte, er
 	url := fmt.Sprintf("%s/rest/v1/%s", c.baseURL, path)
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
+		c.logger.Error("supabase: failed to create request",
+			zap.String("method", method),
+			zap.String("path", path),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
@@ -57,12 +65,22 @@ func (c *Client) doRequest(ctx context.Context, method, path string) ([]byte, er
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.Error("supabase: request failed",
+			zap.String("method", method),
+			zap.String("path", path),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		c.logger.Error("supabase: failed to read response body",
+			zap.String("method", method),
+			zap.String("path", path),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 
@@ -70,8 +88,20 @@ func (c *Client) doRequest(ctx context.Context, method, path string) ([]byte, er
 		return nil, nil // no data
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.logger.Warn("supabase: non-2xx response",
+			zap.String("method", method),
+			zap.String("path", path),
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(body)),
+		)
 		return nil, fmt.Errorf("supabase returned status %d: %s", resp.StatusCode, string(body))
 	}
+
+	c.logger.Debug("supabase: request OK",
+		zap.String("method", method),
+		zap.String("path", path),
+		zap.Int("status", resp.StatusCode),
+	)
 
 	return body, nil
 }

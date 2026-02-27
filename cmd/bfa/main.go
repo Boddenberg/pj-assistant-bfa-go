@@ -33,6 +33,18 @@ func main() {
 	logger := observability.NewLogger(cfg.LogLevel)
 	defer logger.Sync()
 
+	logger.Info("configuration loaded",
+		zap.Int("port", cfg.Port),
+		zap.String("log_level", cfg.LogLevel),
+		zap.Bool("use_supabase", cfg.UseSupabase),
+		zap.Duration("http_timeout", cfg.HTTPTimeout),
+		zap.Duration("cache_ttl", cfg.CacheTTL),
+		zap.Int("max_retries", cfg.MaxRetries),
+		zap.Duration("initial_backoff", cfg.InitialBackoff),
+		zap.Duration("jwt_access_ttl", cfg.JWTAccessTTL),
+		zap.Duration("jwt_refresh_ttl", cfg.JWTRefreshTTL),
+	)
+
 	// --- Tracing ---
 	shutdown, err := observability.InitTracer(cfg.OTLPEndpoint, "pj-assistant-bfa")
 	if err != nil {
@@ -72,6 +84,7 @@ func main() {
 			cfg.SupabaseServiceKey,
 			cb,
 			resilienceCfg,
+			logger,
 		)
 		profileClient = supabaseClient
 		transactionsClient = supabaseClient

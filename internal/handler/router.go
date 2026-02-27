@@ -141,7 +141,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 
 			// Protected routes
 			r.Group(func(r chi.Router) {
-				r.Use(JWTAuthMiddleware(authSvc))
+				r.Use(JWTAuthMiddleware(authSvc, logger))
 				r.Post("/logout", authLogoutHandler(authSvc, logger))
 				r.Put("/password", authChangePasswordHandler(authSvc, logger))
 			})
@@ -151,7 +151,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// 10. 👤 Profile & Representative (protected)
 		// =============================================
 		r.Group(func(r chi.Router) {
-			r.Use(JWTAuthMiddleware(authSvc))
+			r.Use(JWTAuthMiddleware(authSvc, logger))
 			r.Put("/customers/{customerId}/profile", updateProfileHandler(authSvc, logger))
 			r.Put("/customers/{customerId}/representative", updateRepresentativeHandler(authSvc, logger))
 		})
@@ -1425,30 +1425,46 @@ func handleServiceError(w http.ResponseWriter, err error, logger *zap.Logger) {
 
 	switch {
 	case errors.As(err, &notFound):
+		logger.Debug("not found", zap.String("error", err.Error()))
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.As(err, &circuitOpen):
+		logger.Error("circuit breaker open", zap.Error(err))
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 	case errors.As(err, &timeout):
+		logger.Error("request timeout", zap.Error(err))
 		writeError(w, http.StatusGatewayTimeout, err.Error())
 	case errors.As(err, &validation):
+		logger.Debug("validation error", zap.String("error", err.Error()))
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.As(err, &insufficientFunds):
+		logger.Warn("insufficient funds",
+			zap.Float64("available", insufficientFunds.Available),
+			zap.Float64("required", insufficientFunds.Required),
+		)
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 	case errors.As(err, &limitExceeded):
+		logger.Warn("limit exceeded", zap.String("error", err.Error()))
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 	case errors.As(err, &duplicate):
+		logger.Debug("duplicate resource", zap.String("error", err.Error()))
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.As(err, &forbidden):
+		logger.Warn("forbidden access", zap.String("error", err.Error()))
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.As(err, &invalidBarcode):
+		logger.Debug("invalid barcode", zap.String("error", err.Error()))
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.As(err, &unauthorized):
+		logger.Warn("unauthorized", zap.String("error", err.Error()))
 		writeError(w, http.StatusUnauthorized, err.Error())
 	case errors.As(err, &accountBlocked):
+		logger.Warn("account blocked", zap.String("status", accountBlocked.Status))
 		writeError(w, http.StatusForbidden, err.Error())
 	case errors.As(err, &conflict):
+		logger.Debug("conflict", zap.String("error", err.Error()))
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.As(err, &invalidCode):
+		logger.Warn("invalid verification code")
 		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		logger.Error("unhandled error", zap.Error(err))

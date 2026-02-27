@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
+	"go.uber.org/zap"
 )
 
 // ============================================================
@@ -934,6 +935,10 @@ func (c *Client) doPost(ctx context.Context, table string, data map[string]any) 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.Error("supabase: POST request failed",
+			zap.String("table", table),
+			zap.Error(err),
+		)
 		return nil, err
 	}
 	defer resp.Body.Close()
@@ -945,9 +950,15 @@ func (c *Client) doPost(ctx context.Context, table string, data map[string]any) 
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.logger.Warn("supabase: POST non-2xx",
+			zap.String("table", table),
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(body)),
+		)
 		return nil, fmt.Errorf("supabase POST %s returned %d: %s", table, resp.StatusCode, string(body))
 	}
 
+	c.logger.Debug("supabase: POST OK", zap.String("table", table), zap.Int("status", resp.StatusCode))
 	return body, nil
 }
 
@@ -970,15 +981,25 @@ func (c *Client) doPatch(ctx context.Context, path string, data map[string]any) 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.Error("supabase: PATCH request failed",
+			zap.String("path", path),
+			zap.Error(err),
+		)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := readBody(resp)
+		c.logger.Warn("supabase: PATCH non-2xx",
+			zap.String("path", path),
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(body)),
+		)
 		return fmt.Errorf("supabase PATCH returned %d: %s", resp.StatusCode, string(body))
 	}
 
+	c.logger.Debug("supabase: PATCH OK", zap.String("path", path))
 	return nil
 }
 
@@ -996,15 +1017,25 @@ func (c *Client) doDelete(ctx context.Context, path string) error {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.Error("supabase: DELETE request failed",
+			zap.String("path", path),
+			zap.Error(err),
+		)
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := readBody(resp)
+		c.logger.Warn("supabase: DELETE non-2xx",
+			zap.String("path", path),
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(body)),
+		)
 		return fmt.Errorf("supabase DELETE returned %d: %s", resp.StatusCode, string(body))
 	}
 
+	c.logger.Debug("supabase: DELETE OK", zap.String("path", path))
 	return nil
 }
 

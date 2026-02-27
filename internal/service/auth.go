@@ -32,11 +32,11 @@ const (
 
 // AuthService orchestrates authentication flows.
 type AuthService struct {
-	store       port.AuthStore
-	jwtSecret   []byte
-	accessTTL   time.Duration
-	refreshTTL  time.Duration
-	logger      *zap.Logger
+	store      port.AuthStore
+	jwtSecret  []byte
+	accessTTL  time.Duration
+	refreshTTL time.Duration
+	logger     *zap.Logger
 }
 
 // NewAuthService creates a new auth service.
@@ -117,6 +117,10 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 
 	// Check account status
 	if profile.AccountStatus == "blocked" {
+		s.logger.Warn("login: account blocked",
+			zap.String("customer_id", profile.CustomerID),
+			zap.String("document", req.Document),
+		)
 		return nil, &domain.ErrAccountBlocked{Status: "blocked"}
 	}
 
@@ -129,6 +133,10 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	// Check if account is locked
 	if cred.LockedUntil != nil && cred.LockedUntil.After(time.Now()) {
 		remaining := time.Until(*cred.LockedUntil).Minutes()
+		s.logger.Warn("login: account temporarily locked",
+			zap.String("customer_id", profile.CustomerID),
+			zap.Float64("remaining_minutes", remaining),
+		)
 		return nil, &domain.ErrUnauthorized{
 			Message: fmt.Sprintf("Conta temporariamente bloqueada. Tente novamente em %.0f minutos", remaining),
 		}
@@ -142,6 +150,17 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 		if newAttempts >= maxFailedAttempts {
 			lockedUntil := time.Now().Add(lockDuration)
 			updates["locked_until"] = lockedUntil.Format(time.RFC3339)
+			s.logger.Warn("login: account locked after max attempts",
+				zap.String("customer_id", profile.CustomerID),
+				zap.Int("attempts", newAttempts),
+				zap.Duration("lock_duration", lockDuration),
+			)
+		} else {
+			s.logger.Warn("login: failed password attempt",
+				zap.String("customer_id", profile.CustomerID),
+				zap.Int("attempts", newAttempts),
+				zap.Int("max", maxFailedAttempts),
+			)
 		}
 		_ = s.store.UpdateCredentials(ctx, profile.CustomerID, updates)
 
@@ -212,6 +231,9 @@ func (s *AuthService) Refresh(ctx context.Context, req *domain.RefreshRequest) (
 
 	// Check expiry
 	if stored.ExpiresAt.Before(time.Now()) {
+		s.logger.Warn("refresh: expired token used",
+			zap.String("customer_id", stored.CustomerID),
+		)
 		_ = s.store.RevokeRefreshToken(ctx, tokenHash)
 		return nil, &domain.ErrUnauthorized{Message: "Token de atualização expirado"}
 	}
@@ -356,9 +378,9 @@ func (s *AuthService) PasswordResetConfirm(ctx context.Context, req *domain.Pass
 
 	// Update credentials
 	if err := s.store.UpdateCredentials(ctx, profile.CustomerID, map[string]any{
-		"password_hash":      string(hash),
-		"failed_attempts":    0,
-		"locked_until":       nil,
+		"password_hash":       string(hash),
+		"failed_attempts":     0,
+		"locked_until":        nil,
 		"password_changed_at": time.Now().Format(time.RFC3339),
 	}); err != nil {
 		return fmt.Errorf("update credentials: %w", err)
@@ -389,6 +411,9 @@ func (s *AuthService) ChangePassword(ctx context.Context, customerID string, req
 
 	// Verify current password
 	if err := bcrypt.CompareHashAndPassword([]byte(cred.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		s.logger.Warn("password change: wrong current password",
+			zap.String("customer_id", customerID),
+		)
 		return &domain.ErrUnauthorized{Message: "Senha atual incorreta"}
 	}
 
@@ -404,7 +429,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, customerID string, req
 	}
 
 	if err := s.store.UpdateCredentials(ctx, customerID, map[string]any{
-		"password_hash":      string(hash),
+		"password_hash":       string(hash),
 		"password_changed_at": time.Now().Format(time.RFC3339),
 	}); err != nil {
 		return fmt.Errorf("update credentials: %w", err)

@@ -226,7 +226,20 @@ func (s *BankingService) CreateScheduledTransfer(ctx context.Context, customerID
 		return nil, err
 	}
 
-	return s.store.CreateScheduledTransfer(ctx, customerID, req)
+	transfer, err := s.store.CreateScheduledTransfer(ctx, customerID, req)
+	if err != nil {
+		s.logger.Error("failed to create scheduled transfer", zap.String("customer_id", customerID), zap.Error(err))
+		return nil, err
+	}
+
+	s.logger.Info("scheduled transfer created",
+		zap.String("customer_id", customerID),
+		zap.String("transfer_id", transfer.ID),
+		zap.Float64("amount", req.Amount),
+		zap.String("scheduled_date", req.ScheduledDate),
+	)
+
+	return transfer, nil
 }
 
 func (s *BankingService) ListScheduledTransfers(ctx context.Context, customerID string) ([]domain.ScheduledTransfer, error) {
@@ -305,7 +318,19 @@ func (s *BankingService) RequestCreditCard(ctx context.Context, customerID strin
 		return nil, err
 	}
 
-	return s.store.CreateCreditCard(ctx, customerID, req)
+	card, err := s.store.CreateCreditCard(ctx, customerID, req)
+	if err != nil {
+		s.logger.Error("failed to create credit card", zap.String("customer_id", customerID), zap.Error(err))
+		return nil, err
+	}
+
+	s.logger.Info("credit card requested",
+		zap.String("customer_id", customerID),
+		zap.String("card_id", card.ID),
+		zap.String("brand", req.CardBrand),
+	)
+
+	return card, nil
 }
 
 func (s *BankingService) ListCreditCards(ctx context.Context, customerID string) ([]domain.CreditCard, error) {
@@ -576,7 +601,20 @@ func (s *BankingService) PayBill(ctx context.Context, customerID string, req *do
 		}
 	}
 
-	return s.store.CreateBillPayment(ctx, customerID, req, valResult)
+	bill, err := s.store.CreateBillPayment(ctx, customerID, req, valResult)
+	if err != nil {
+		s.logger.Error("failed to create bill payment", zap.String("customer_id", customerID), zap.Error(err))
+		return nil, err
+	}
+
+	s.logger.Info("bill payment created",
+		zap.String("customer_id", customerID),
+		zap.String("bill_id", bill.ID),
+		zap.Float64("amount", amount),
+		zap.String("bill_type", valResult.BillType),
+	)
+
+	return bill, nil
 }
 
 func (s *BankingService) ListBillPayments(ctx context.Context, customerID string, page, pageSize int) ([]domain.BillPayment, error) {
@@ -646,8 +684,16 @@ func (s *BankingService) CreateDebitPurchase(ctx context.Context, customerID str
 
 	purchase, err := s.store.CreateDebitPurchase(ctx, customerID, req)
 	if err != nil {
+		s.logger.Error("failed to create debit purchase", zap.String("customer_id", customerID), zap.Error(err))
 		return nil, err
 	}
+
+	s.logger.Info("debit purchase completed",
+		zap.String("customer_id", customerID),
+		zap.String("transaction_id", purchase.ID),
+		zap.Float64("amount", purchase.Amount),
+		zap.String("merchant", req.MerchantName),
+	)
 
 	return &domain.DebitPurchaseResponse{
 		TransactionID: purchase.ID,
