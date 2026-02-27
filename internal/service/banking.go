@@ -155,6 +155,37 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 		return nil, err
 	}
 
+	// Debit account balance and record transaction
+	if req.FundedBy == "balance" {
+		if _, balErr := s.store.UpdateAccountBalance(ctx, customerID, -req.Amount); balErr != nil {
+			s.logger.Error("failed to debit balance after pix transfer",
+				zap.String("customer_id", customerID),
+				zap.Error(balErr),
+			)
+		}
+	}
+
+	now := time.Now()
+	desc := fmt.Sprintf("Pix enviado - %s", transfer.DestinationKeyValue)
+	if transfer.DestinationName != "" {
+		desc = fmt.Sprintf("Pix enviado - %s", transfer.DestinationName)
+	}
+	txRec := map[string]any{
+		"id":          uuid.New().String(),
+		"customer_id": customerID,
+		"date":        now.Format(time.RFC3339),
+		"description": desc,
+		"amount":      -req.Amount,
+		"type":        "pix_sent",
+		"category":    "transferencia",
+	}
+	if txErr := s.store.InsertTransaction(ctx, txRec); txErr != nil {
+		s.logger.Error("failed to record pix transaction",
+			zap.String("customer_id", customerID),
+			zap.Error(txErr),
+		)
+	}
+
 	s.logger.Info("PIX transfer created",
 		zap.String("customer_id", customerID),
 		zap.String("transfer_id", transfer.ID),
@@ -609,6 +640,36 @@ func (s *BankingService) PayBill(ctx context.Context, customerID string, req *do
 		return nil, err
 	}
 
+	// Debit account balance
+	if _, balErr := s.store.UpdateAccountBalance(ctx, customerID, -amount); balErr != nil {
+		s.logger.Error("failed to debit balance after bill payment",
+			zap.String("customer_id", customerID),
+			zap.Error(balErr),
+		)
+	}
+
+	// Record in customer_transactions
+	now := time.Now()
+	desc := fmt.Sprintf("Pagamento de boleto - %s", valResult.BillType)
+	if valResult.BeneficiaryName != "" {
+		desc = fmt.Sprintf("Pagamento de boleto - %s", valResult.BeneficiaryName)
+	}
+	txRec := map[string]any{
+		"id":          uuid.New().String(),
+		"customer_id": customerID,
+		"date":        now.Format(time.RFC3339),
+		"description": desc,
+		"amount":      -amount,
+		"type":        "bill_payment",
+		"category":    "contas",
+	}
+	if txErr := s.store.InsertTransaction(ctx, txRec); txErr != nil {
+		s.logger.Error("failed to record bill transaction",
+			zap.String("customer_id", customerID),
+			zap.Error(txErr),
+		)
+	}
+
 	s.logger.Info("bill payment created",
 		zap.String("customer_id", customerID),
 		zap.String("bill_id", bill.ID),
@@ -690,6 +751,36 @@ func (s *BankingService) CreateDebitPurchase(ctx context.Context, customerID str
 		return nil, err
 	}
 
+	// Debit account balance
+	updatedAcct, balErr := s.store.UpdateAccountBalance(ctx, customerID, -purchase.Amount)
+	newBalance := account.AvailableBalance - purchase.Amount
+	if balErr != nil {
+		s.logger.Error("failed to debit balance after debit purchase",
+			zap.String("customer_id", customerID),
+			zap.Error(balErr),
+		)
+	} else {
+		newBalance = updatedAcct.AvailableBalance
+	}
+
+	// Record in customer_transactions
+	now := time.Now()
+	txRec := map[string]any{
+		"id":          uuid.New().String(),
+		"customer_id": customerID,
+		"date":        now.Format(time.RFC3339),
+		"description": fmt.Sprintf("Compra débito - %s", req.MerchantName),
+		"amount":      -purchase.Amount,
+		"type":        "debit_purchase",
+		"category":    "compras",
+	}
+	if txErr := s.store.InsertTransaction(ctx, txRec); txErr != nil {
+		s.logger.Error("failed to record debit purchase transaction",
+			zap.String("customer_id", customerID),
+			zap.Error(txErr),
+		)
+	}
+
 	s.logger.Info("debit purchase completed",
 		zap.String("customer_id", customerID),
 		zap.String("transaction_id", purchase.ID),
@@ -701,7 +792,7 @@ func (s *BankingService) CreateDebitPurchase(ctx context.Context, customerID str
 		TransactionID: purchase.ID,
 		Status:        "completed",
 		Amount:        purchase.Amount,
-		NewBalance:    account.AvailableBalance - purchase.Amount,
+		NewBalance:    newBalance,
 		Timestamp:     purchase.TransactionDate.Format(time.RFC3339),
 	}, nil
 }
