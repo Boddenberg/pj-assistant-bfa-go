@@ -144,6 +144,8 @@ type PixTransferRequest struct {
 	FundedBy               string  `json:"funded_by,omitempty"` // "balance" or "credit_card"
 	CreditCardID           string  `json:"credit_card_id,omitempty"`
 	CreditCardInstallments int     `json:"credit_card_installments,omitempty"`
+	FeeRate                float64 `json:"fee_rate,omitempty"`        // e.g. 0.02 for 2% per installment
+	TotalWithFees          float64 `json:"total_with_fees,omitempty"` // amount * (1 + feeRate*(installments-1))
 	ScheduledFor           string  `json:"scheduled_for,omitempty"` // RFC3339 or empty for immediate
 }
 
@@ -178,6 +180,9 @@ type PixReceipt struct {
 	CustomerID        string  `json:"customer_id"`
 	Direction         string  `json:"direction"` // "sent" or "received"
 	Amount            float64 `json:"amount"`
+	OriginalAmount    float64 `json:"original_amount,omitempty"`
+	FeeAmount         float64 `json:"fee_amount,omitempty"`
+	TotalAmount       float64 `json:"total_amount,omitempty"`
 	Description       string  `json:"description,omitempty"`
 	EndToEndID        string  `json:"end_to_end_id"`
 	FundedBy          string  `json:"funded_by"`
@@ -666,6 +671,7 @@ type PixTransferResponse struct {
 	TransactionID string        `json:"transactionId"`
 	Status        string        `json:"status"`
 	Amount        float64       `json:"amount"`
+	NewBalance    float64       `json:"newBalance,omitempty"`
 	Recipient     *PixRecipient `json:"recipient"`
 	Timestamp     string        `json:"timestamp"`
 	E2EID         string        `json:"e2eId"`
@@ -715,9 +721,11 @@ type PixCreditCardResponse struct {
 	TransactionID    string        `json:"transactionId"`
 	Status           string        `json:"status"`
 	Amount           float64       `json:"amount"`
+	OriginalAmount   float64       `json:"originalAmount"`
+	FeeAmount        float64       `json:"feeAmount"`
+	TotalWithFees    float64       `json:"totalWithFees"`
 	Installments     int           `json:"installments"`
 	InstallmentValue float64       `json:"installmentValue"`
-	TotalWithFees    float64       `json:"totalWithFees"`
 	Recipient        *PixRecipient `json:"recipient"`
 	Timestamp        string        `json:"timestamp"`
 	ReceiptID        string        `json:"receiptId,omitempty"`
@@ -725,14 +733,17 @@ type PixCreditCardResponse struct {
 
 // PixReceiptResponse is the formatted receipt returned to the frontend.
 type PixReceiptResponse struct {
-	ID           string           `json:"id"`
-	TransferID   string           `json:"transferId"`
-	Direction    string           `json:"direction"`
-	Amount       float64          `json:"amount"`
-	Description  string           `json:"description,omitempty"`
-	E2EID        string           `json:"e2eId"`
-	FundedBy     string           `json:"fundedBy"`
-	Installments int              `json:"installments,omitempty"`
+	ID             string           `json:"id"`
+	TransferID     string           `json:"transferId"`
+	Direction      string           `json:"direction"`
+	Amount         float64          `json:"amount"`
+	OriginalAmount float64          `json:"originalAmount,omitempty"`
+	FeeAmount      float64          `json:"feeAmount,omitempty"`
+	TotalAmount    float64          `json:"totalAmount,omitempty"`
+	Description    string           `json:"description,omitempty"`
+	E2EID          string           `json:"e2eId"`
+	FundedBy       string           `json:"fundedBy"`
+	Installments   int              `json:"installments,omitempty"`
 	Sender       *PixReceiptParty `json:"sender"`
 	Recipient    *PixReceiptParty `json:"recipient"`
 	PixKey       *PixKeyInfo      `json:"pixKey,omitempty"`

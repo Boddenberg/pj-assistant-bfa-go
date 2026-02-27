@@ -242,6 +242,9 @@ func (c *Client) SavePixReceipt(ctx context.Context, receipt *domain.PixReceipt)
 		"customer_id":         receipt.CustomerID,
 		"direction":           receipt.Direction,
 		"amount":              receipt.Amount,
+		"original_amount":     receipt.OriginalAmount,
+		"fee_amount":          receipt.FeeAmount,
+		"total_amount":        receipt.TotalAmount,
 		"description":         receipt.Description,
 		"end_to_end_id":       receipt.EndToEndID,
 		"funded_by":           receipt.FundedBy,
@@ -266,7 +269,14 @@ func (c *Client) SavePixReceipt(ctx context.Context, receipt *domain.PixReceipt)
 
 	body, err := c.doPost(ctx, "pix_receipts", row)
 	if err != nil {
-		return nil, err
+		// If insert fails (possibly because fee columns don't exist yet), retry without them
+		delete(row, "original_amount")
+		delete(row, "fee_amount")
+		delete(row, "total_amount")
+		body, err = c.doPost(ctx, "pix_receipts", row)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var results []domain.PixReceipt

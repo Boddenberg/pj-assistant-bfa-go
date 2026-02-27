@@ -362,6 +362,46 @@ func getTransactionsHandler(svc *service.Assistant, logger *zap.Logger) http.Han
 			return
 		}
 
+		// Filter by type(s) if provided — e.g. ?type=pix_sent,pix_received
+		if typeFilter := r.URL.Query().Get("type"); typeFilter != "" {
+			allowedTypes := make(map[string]bool)
+			for _, t := range strings.Split(typeFilter, ",") {
+				t = strings.TrimSpace(t)
+				if t != "" {
+					allowedTypes[t] = true
+				}
+			}
+			if len(allowedTypes) > 0 {
+				filtered := make([]domain.Transaction, 0, len(transactions))
+				for _, tx := range transactions {
+					if allowedTypes[tx.Type] {
+						filtered = append(filtered, tx)
+					}
+				}
+				transactions = filtered
+			}
+		}
+
+		// Filter by category if provided — e.g. ?category=pix,pix_credito
+		if catFilter := r.URL.Query().Get("category"); catFilter != "" {
+			allowedCats := make(map[string]bool)
+			for _, c := range strings.Split(catFilter, ",") {
+				c = strings.TrimSpace(c)
+				if c != "" {
+					allowedCats[c] = true
+				}
+			}
+			if len(allowedCats) > 0 {
+				filtered := make([]domain.Transaction, 0, len(transactions))
+				for _, tx := range transactions {
+					if allowedCats[tx.Category] {
+						filtered = append(filtered, tx)
+					}
+				}
+				transactions = filtered
+			}
+		}
+
 		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 			if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 && limit < len(transactions) {
 				transactions = transactions[:limit]
@@ -536,10 +576,17 @@ func pixTransferHandler(bankSvc *service.BankingService, logger *zap.Logger) htt
 			return
 		}
 
+		// Fetch updated balance for response
+		var newBalance float64
+		if updatedAcct, balErr := bankSvc.GetPrimaryAccount(ctx, apiReq.CustomerID); balErr == nil {
+			newBalance = updatedAcct.AvailableBalance
+		}
+
 		resp := domain.PixTransferResponse{
 			TransactionID: transfer.ID,
 			Status:        transfer.Status,
 			Amount:        transfer.Amount,
+			NewBalance:    newBalance,
 			Timestamp:     transfer.CreatedAt.Format(time.RFC3339),
 			E2EID:         transfer.EndToEndID,
 			ReceiptID:     transfer.ReceiptID,
@@ -711,6 +758,11 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 			return
 		}
 
+		// Calculate fees BEFORE calling service so limits are validated correctly
+		feeRate := 0.02
+		totalWithFees := apiReq.Amount * (1 + feeRate*float64(apiReq.Installments-1))
+		installmentValue := totalWithFees / float64(apiReq.Installments)
+
 		req := &domain.PixTransferRequest{
 			IdempotencyKey:         uuid.New().String(),
 			SourceAccountID:        account.ID,
@@ -721,6 +773,8 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 			FundedBy:               "credit_card",
 			CreditCardID:           apiReq.CreditCardID,
 			CreditCardInstallments: apiReq.Installments,
+			FeeRate:                feeRate,
+			TotalWithFees:          totalWithFees,
 		}
 
 		transfer, err := bankSvc.CreatePixTransfer(ctx, apiReq.CustomerID, req)
@@ -729,17 +783,17 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 			return
 		}
 
-		feeRate := 0.02
-		totalWithFees := apiReq.Amount * (1 + feeRate*float64(apiReq.Installments-1))
-		installmentValue := totalWithFees / float64(apiReq.Installments)
+		feeAmount := totalWithFees - apiReq.Amount
 
 		resp := domain.PixCreditCardResponse{
 			TransactionID:    transfer.ID,
 			Status:           transfer.Status,
 			Amount:           apiReq.Amount,
+			OriginalAmount:   apiReq.Amount,
+			FeeAmount:        feeAmount,
+			TotalWithFees:    totalWithFees,
 			Installments:     apiReq.Installments,
 			InstallmentValue: installmentValue,
-			TotalWithFees:    totalWithFees,
 			Recipient: &domain.PixRecipient{
 				Name: transfer.DestinationName,
 				PixKey: &domain.PixKeyInfo{
@@ -761,11 +815,14 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 
 func formatReceiptResponse(r *domain.PixReceipt) *domain.PixReceiptResponse {
 	return &domain.PixReceiptResponse{
-		ID:           r.ID,
-		TransferID:   r.TransferID,
-		Direction:    r.Direction,
-		Amount:       r.Amount,
-		Description:  r.Description,
+		ID:             r.ID,
+		TransferID:     r.TransferID,
+		Direction:      r.Direction,
+		Amount:         r.Amount,
+		OriginalAmount: r.OriginalAmount,
+		FeeAmount:      r.FeeAmount,
+		TotalAmount:    r.TotalAmount,
+		Description:    r.Description,
 		E2EID:        r.EndToEndID,
 		FundedBy:     r.FundedBy,
 		Installments: r.Installments,

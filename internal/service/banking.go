@@ -98,31 +98,41 @@ func (s *BankingService) LookupPixKey(ctx context.Context, keyType, keyValue str
 func detectPixKeyType(value string) string {
 	// Strip non-digit chars for numeric checks
 	digits := ""
+	hasCNPJFormatting := false
 	for _, r := range value {
 		if r >= '0' && r <= '9' {
 			digits += string(r)
 		}
+		if r == '.' || r == '/' {
+			hasCNPJFormatting = true
+		}
 	}
 
-	// CNPJ: 14 digits
-	if len(digits) == 14 {
-		return "cnpj"
-	}
-	// CPF: 11 digits
-	if len(digits) == 11 && !strings.HasPrefix(value, "+") {
-		return "cpf"
-	}
-	// Phone: starts with + or has 10-13 digits
-	if strings.HasPrefix(value, "+") || (len(digits) >= 10 && len(digits) <= 13) {
-		return "phone"
-	}
-	// Email
+	// Email — check first since it's unambiguous
 	if strings.Contains(value, "@") {
 		return "email"
 	}
 	// UUID-like → random
 	if len(value) == 36 && strings.Count(value, "-") == 4 {
 		return "random"
+	}
+	// CNPJ: 14 digits, or 11-14 digits with CNPJ formatting (dots/slashes)
+	if len(digits) == 14 {
+		return "cnpj"
+	}
+	if hasCNPJFormatting && len(digits) >= 11 && len(digits) <= 14 {
+		return "cnpj"
+	}
+	// CPF: 11 digits (not starting with +)
+	if len(digits) == 11 && !strings.HasPrefix(value, "+") {
+		return "cpf"
+	}
+	// Phone: starts with + or has 10-13 digits (only if no CNPJ formatting)
+	if strings.HasPrefix(value, "+") {
+		return "phone"
+	}
+	if len(digits) >= 10 && len(digits) <= 13 && !hasCNPJFormatting {
+		return "phone"
 	}
 	// Could not determine
 	return ""
@@ -280,8 +290,21 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 		if !card.PixCreditEnabled {
 			return nil, &domain.ErrValidation{Field: "credit_card_id", Message: "PIX via credit card not enabled for this card"}
 		}
-		if card.PixCreditUsed+req.Amount > card.PixCreditLimit {
-			return nil, &domain.ErrLimitExceeded{LimitType: "pix_credit", Limit: card.PixCreditLimit, Current: card.PixCreditUsed + req.Amount}
+		// Calculate total with fees if not already set
+		if req.TotalWithFees <= 0 {
+			installments := req.CreditCardInstallments
+			if installments <= 0 {
+				installments = 1
+			}
+			feeRate := req.FeeRate
+			if feeRate <= 0 {
+				feeRate = 0.02
+			}
+			req.TotalWithFees = req.Amount * (1 + feeRate*float64(installments-1))
+		}
+		// Validate against TOTAL with fees, not just raw amount
+		if card.PixCreditUsed+req.TotalWithFees > card.PixCreditLimit {
+			return nil, &domain.ErrLimitExceeded{LimitType: "pix_credit", Limit: card.PixCreditLimit, Current: card.PixCreditUsed + req.TotalWithFees}
 		}
 	}
 
@@ -340,7 +363,12 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 		// ── 1a. Credit card: debit card limit + record in fatura ──
 		card, _ := s.store.GetCreditCard(ctx, customerID, req.CreditCardID)
 		if card != nil {
-			newUsed := card.UsedLimit + req.Amount
+			// Debit the TOTAL with fees from the card limit
+			debitAmount := req.TotalWithFees
+			if debitAmount <= 0 {
+				debitAmount = req.Amount
+			}
+			newUsed := card.UsedLimit + debitAmount
 			newAvailable := card.CreditLimit - newUsed
 			if newAvailable < 0 {
 				newAvailable = 0
@@ -350,7 +378,7 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 					zap.String("card_id", card.ID), zap.Error(ulErr))
 			}
 			// Also update pix_credit_used on the card
-			newPixUsed := card.PixCreditUsed + req.Amount
+			newPixUsed := card.PixCreditUsed + debitAmount
 			if pxErr := s.store.UpdateCreditCardPixCreditUsed(ctx, card.ID, newPixUsed); pxErr != nil {
 				s.logger.Error("failed to update pix_credit_used after pix credit",
 					zap.String("card_id", card.ID), zap.Error(pxErr))
@@ -358,12 +386,16 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 		}
 
 		// Insert into credit_card_transactions (fatura do remetente)
+		faturaAmount := req.TotalWithFees
+		if faturaAmount <= 0 {
+			faturaAmount = req.Amount
+		}
 		ccTx := map[string]any{
 			"id":                  uuid.New().String(),
 			"card_id":             req.CreditCardID,
 			"customer_id":         customerID,
 			"transaction_date":    now.Format(time.RFC3339),
-			"amount":              req.Amount,
+			"amount":              faturaAmount,
 			"merchant_name":       descSent,
 			"category":            "pix_credito",
 			"description":         descSent,
@@ -395,7 +427,7 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 			"description": descSent,
 			"amount":      -req.Amount,
 			"type":        "pix_sent",
-			"category":    "transferencia",
+			"category":    "pix",
 		}
 		if txErr := s.store.InsertTransaction(ctx, txSent); txErr != nil {
 			s.logger.Error("failed to record sender pix transaction",
@@ -454,12 +486,23 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 	if installments <= 0 {
 		installments = 1
 	}
+	// Compute fee fields for receipt
+	feeAmount := 0.0
+	totalAmount := req.Amount
+	if req.FundedBy == "credit_card" && req.TotalWithFees > 0 {
+		feeAmount = req.TotalWithFees - req.Amount
+		totalAmount = req.TotalWithFees
+	}
+
 	receiptSent := &domain.PixReceipt{
 		ID:                uuid.New().String(),
 		TransferID:        transfer.ID,
 		CustomerID:        customerID,
 		Direction:         "sent",
 		Amount:            req.Amount,
+		OriginalAmount:    req.Amount,
+		FeeAmount:         feeAmount,
+		TotalAmount:       totalAmount,
 		Description:       req.Description,
 		EndToEndID:        transfer.EndToEndID,
 		FundedBy:          req.FundedBy,
@@ -495,6 +538,9 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 			CustomerID:        destCustomerID,
 			Direction:         "received",
 			Amount:            req.Amount,
+			OriginalAmount:    req.Amount,
+			FeeAmount:         0,
+			TotalAmount:       req.Amount,
 			Description:       req.Description,
 			EndToEndID:        transfer.EndToEndID,
 			FundedBy:          req.FundedBy,
@@ -1793,7 +1839,7 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		Descs    []string
 		Category string
 	}{
-		{"pix_sent", true, []string{"Pix enviado - Maria Silva", "Pix enviado - João LTDA", "Pix enviado - Ana Costa"}, "transferencia"},
+		{"pix_sent", true, []string{"Pix enviado - Maria Silva", "Pix enviado - João LTDA", "Pix enviado - Ana Costa"}, "pix"},
 		{"pix_received", false, []string{"Pix recebido - Tech Corp", "Pix recebido - Vendas Online", "Pix recebido - Cliente ABC"}, "recebimento"},
 		{"debit_purchase", true, []string{"Supermercado Extra", "Posto Shell", "Farmácia São Paulo", "Restaurante Sabor"}, "compras"},
 		{"credit_purchase", true, []string{"Amazon AWS", "Google Cloud", "Material Escritório", "Uber Business"}, "tecnologia"},
