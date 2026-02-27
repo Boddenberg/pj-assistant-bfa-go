@@ -978,9 +978,22 @@ func (c *Client) UpdateAccountBalance(ctx context.Context, customerID string, de
 		return nil, err
 	}
 
-	acct.Balance = newBalance
-	acct.AvailableBalance = newAvailable
-	return &acct, nil
+	// Re-fetch to confirm the update actually persisted
+	updated, err := c.ListAccounts(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("re-fetch after balance update: %w", err)
+	}
+	if len(updated) == 0 {
+		return nil, fmt.Errorf("account disappeared after balance update")
+	}
+
+	c.logger.Info("supabase: balance updated",
+		zap.String("account_id", updated[0].ID),
+		zap.Float64("old_balance", acct.Balance),
+		zap.Float64("new_balance", updated[0].Balance),
+	)
+
+	return &updated[0], nil
 }
 
 // --- Credit Card Limit Update (dev tools) ---
@@ -1006,7 +1019,7 @@ func (c *Client) UpdateCreditCardLimit(ctx context.Context, customerID string, n
 	}
 
 	return c.doPatch(ctx, fmt.Sprintf("credit_cards?id=eq.%s", card.ID), map[string]any{
-		"credit_limit":   newLimit,
+		"credit_limit":    newLimit,
 		"available_limit": availableLimit,
 	})
 }

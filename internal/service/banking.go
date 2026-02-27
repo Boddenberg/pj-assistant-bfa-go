@@ -1095,6 +1095,27 @@ func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBa
 		return nil, err
 	}
 
+	// Record the transaction for extrato/fatura
+	now := time.Now()
+	tx := map[string]any{
+		"id":           uuid.New().String(),
+		"customer_id":  req.CustomerID,
+		"account_id":   acct.ID,
+		"date":         now.Format(time.RFC3339),
+		"description":  "DevTools — Crédito de saldo",
+		"amount":       req.Amount,
+		"type":         "credit",
+		"category":     "devtools",
+		"counterparty": "DevTools",
+	}
+	if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
+		s.logger.Error("DEV: failed to record balance transaction",
+			zap.String("customer_id", req.CustomerID),
+			zap.Error(txErr),
+		)
+		// Don't fail the whole operation — balance was already updated
+	}
+
 	s.logger.Info("DEV: balance added",
 		zap.String("customer_id", req.CustomerID),
 		zap.Float64("amount", req.Amount),
@@ -1120,9 +1141,34 @@ func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevS
 		return nil, &domain.ErrValidation{Field: "limit", Message: "deve ser positivo"}
 	}
 
+	// Get account for transaction record
+	acct, acctErr := s.store.GetPrimaryAccount(ctx, req.CustomerID)
+
 	err := s.store.UpdateCreditCardLimit(ctx, req.CustomerID, req.Limit)
 	if err != nil {
 		return nil, err
+	}
+
+	// Record the transaction for extrato/fatura
+	if acctErr == nil {
+		now := time.Now()
+		tx := map[string]any{
+			"id":           uuid.New().String(),
+			"customer_id":  req.CustomerID,
+			"account_id":   acct.ID,
+			"date":         now.Format(time.RFC3339),
+			"description":  fmt.Sprintf("DevTools — Limite de crédito ajustado para R$ %.2f", req.Limit),
+			"amount":       0,
+			"type":         "adjustment",
+			"category":     "devtools",
+			"counterparty": "DevTools",
+		}
+		if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
+			s.logger.Error("DEV: failed to record credit limit transaction",
+				zap.String("customer_id", req.CustomerID),
+				zap.Error(txErr),
+			)
+		}
 	}
 
 	s.logger.Info("DEV: credit limit updated",
