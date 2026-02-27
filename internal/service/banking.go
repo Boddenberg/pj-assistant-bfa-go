@@ -232,45 +232,107 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 		}
 	}
 
+	// ── Resolve destination info (name, document) from pix key owner ──
+	var destCustomerID string
+	if destKey != nil {
+		destCustomerID = destKey.CustomerID
+		destName, destDoc, _, _, _, lookupErr := s.store.GetCustomerLookupData(ctx, destKey.CustomerID)
+		if lookupErr == nil {
+			req.DestinationName = destName
+			req.DestinationDocument = destDoc
+		}
+	}
+
+	// ── Sender name for destination extrato ──
+	senderName, _ := s.store.GetCustomerName(ctx, customerID)
+	if senderName == "" || senderName == "Destinatário" {
+		senderName = "Remetente"
+	}
+
 	transfer, err := s.store.CreatePixTransfer(ctx, customerID, req)
 	if err != nil {
 		s.logger.Error("failed to create PIX transfer", zap.Error(err))
 		return nil, err
 	}
 
-	// Debit account balance and record transaction
+	now := time.Now()
+
+	// ── 1. Debit sender balance and record pix_sent transaction ──
 	if req.FundedBy == "balance" {
 		if _, balErr := s.store.UpdateAccountBalance(ctx, customerID, -req.Amount); balErr != nil {
-			s.logger.Error("failed to debit balance after pix transfer",
+			s.logger.Error("failed to debit sender balance after pix transfer",
 				zap.String("customer_id", customerID),
 				zap.Error(balErr),
 			)
 		}
 	}
 
-	now := time.Now()
-	desc := fmt.Sprintf("Pix enviado - %s", transfer.DestinationKeyValue)
+	descSent := fmt.Sprintf("Pix enviado - %s", transfer.DestinationKeyValue)
 	if transfer.DestinationName != "" {
-		desc = fmt.Sprintf("Pix enviado - %s", transfer.DestinationName)
+		descSent = fmt.Sprintf("Pix enviado - %s", transfer.DestinationName)
 	}
-	txRec := map[string]any{
+	txSent := map[string]any{
 		"id":          uuid.New().String(),
 		"customer_id": customerID,
 		"date":        now.Format(time.RFC3339),
-		"description": desc,
+		"description": descSent,
 		"amount":      -req.Amount,
 		"type":        "pix_sent",
 		"category":    "transferencia",
 	}
-	if txErr := s.store.InsertTransaction(ctx, txRec); txErr != nil {
-		s.logger.Error("failed to record pix transaction",
+	if txErr := s.store.InsertTransaction(ctx, txSent); txErr != nil {
+		s.logger.Error("failed to record sender pix transaction",
 			zap.String("customer_id", customerID),
 			zap.Error(txErr),
 		)
 	}
 
-	s.logger.Info("PIX transfer created",
+	// ── 2. Credit destination balance and record pix_received transaction ──
+	if destCustomerID != "" {
+		// Credit destination account
+		if _, balErr := s.store.UpdateAccountBalance(ctx, destCustomerID, req.Amount); balErr != nil {
+			s.logger.Error("failed to credit destination balance after pix transfer",
+				zap.String("dest_customer_id", destCustomerID),
+				zap.Error(balErr),
+			)
+		} else {
+			s.logger.Info("PIX destination credited",
+				zap.String("dest_customer_id", destCustomerID),
+				zap.Float64("amount", req.Amount),
+			)
+		}
+
+		// Record pix_received in destination's extrato
+		txReceived := map[string]any{
+			"id":          uuid.New().String(),
+			"customer_id": destCustomerID,
+			"date":        now.Format(time.RFC3339),
+			"description": fmt.Sprintf("Pix recebido - %s", senderName),
+			"amount":      req.Amount,
+			"type":        "pix_received",
+			"category":    "recebimento",
+		}
+		if txErr := s.store.InsertTransaction(ctx, txReceived); txErr != nil {
+			s.logger.Error("failed to record destination pix_received transaction",
+				zap.String("dest_customer_id", destCustomerID),
+				zap.Error(txErr),
+			)
+		}
+	}
+
+	// ── 3. Mark transfer as completed ──
+	if updErr := s.store.UpdatePixTransferStatus(ctx, transfer.ID, "completed"); updErr != nil {
+		s.logger.Error("failed to update pix transfer status to completed",
+			zap.String("transfer_id", transfer.ID),
+			zap.Error(updErr),
+		)
+	} else {
+		transfer.Status = "completed"
+	}
+
+	s.logger.Info("PIX transfer completed",
 		zap.String("customer_id", customerID),
+		zap.String("dest_customer_id", destCustomerID),
 		zap.String("transfer_id", transfer.ID),
 		zap.Float64("amount", req.Amount),
 		zap.String("funded_by", req.FundedBy),

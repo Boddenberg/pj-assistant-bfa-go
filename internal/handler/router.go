@@ -530,7 +530,9 @@ func pixTransferHandler(bankSvc *service.BankingService, logger *zap.Logger) htt
 			Timestamp:     transfer.CreatedAt.Format(time.RFC3339),
 			E2EID:         transfer.EndToEndID,
 			Recipient: &domain.PixRecipient{
-				Name: transfer.DestinationName,
+				Name:     transfer.DestinationName,
+				Document: transfer.DestinationDocument,
+				Bank:     "Itaú Unibanco",
 				PixKey: &domain.PixKeyInfo{
 					Type:  transfer.DestinationKeyType,
 					Value: transfer.DestinationKeyValue,
