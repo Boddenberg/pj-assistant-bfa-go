@@ -43,6 +43,7 @@ type BankingStore interface {
 	// PIX Keys
 	ListPixKeys(ctx context.Context, customerID string) ([]domain.PixKey, error)
 	LookupPixKey(ctx context.Context, keyType, keyValue string) (*domain.PixKey, error)
+	CreatePixKey(ctx context.Context, key *domain.PixKey) (*domain.PixKey, error)
 
 	// PIX Transfers
 	CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error)
@@ -102,6 +103,16 @@ type BankingStore interface {
 
 	// Transactions (bank statement — needed for summary)
 	GetTransactionSummary(ctx context.Context, customerID string) (*domain.TransactionSummary, error)
+	InsertTransaction(ctx context.Context, data map[string]any) error
+
+	// Account balance update (dev tools)
+	UpdateAccountBalance(ctx context.Context, customerID string, delta float64) (*domain.Account, error)
+
+	// Credit card limit update (dev tools)
+	UpdateCreditCardLimit(ctx context.Context, customerID string, newLimit float64) error
+
+	// Credit card invoice update
+	UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, status string) error
 }
 
 // AuthStore defines all data operations for the authentication system.

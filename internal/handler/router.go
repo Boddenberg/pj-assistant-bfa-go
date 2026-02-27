@@ -129,6 +129,23 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Put("/customers/{customerId}/analytics/budgets/{budgetId}", updateBudgetHandler(bankSvc, logger))
 
 		// =============================================
+		// Pix Key Registration
+		// =============================================
+		r.Post("/pix/keys/register", pixKeyRegisterHandler(bankSvc, logger))
+
+		// =============================================
+		// Invoice Payment
+		// =============================================
+		r.Post("/customers/{customerId}/credit-cards/{cardId}/invoice/pay", invoicePayHandler(bankSvc, logger))
+
+		// =============================================
+		// 🛠 Dev Tools (testing helpers)
+		// =============================================
+		r.Post("/dev/add-balance", devAddBalanceHandler(bankSvc, logger))
+		r.Post("/dev/set-credit-limit", devSetCreditLimitHandler(bankSvc, logger))
+		r.Post("/dev/generate-transactions", devGenerateTransactionsHandler(bankSvc, logger))
+
+		// =============================================
 		// 9. 🔐 Autenticação
 		// =============================================
 		r.Route("/auth", func(r chi.Router) {
@@ -800,6 +817,7 @@ func cardRequestHandler(bankSvc *service.BankingService, logger *zap.Logger) htt
 			AccountID:      account.ID,
 			CardBrand:      apiReq.PreferredBrand,
 			CardType:       cardType,
+			DueDay:         apiReq.DueDay,
 			RequestedLimit: apiReq.RequestedLimit,
 		}
 
@@ -1479,6 +1497,130 @@ func handleServiceError(w http.ResponseWriter, err error, logger *zap.Logger) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
 }
+
+// ============================================================
+// Pix Key Registration Handler
+// ============================================================
+
+func pixKeyRegisterHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "POST /v1/pix/keys/register")
+		defer span.End()
+
+		var req domain.PixKeyRegisterRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		resp, err := bankSvc.RegisterPixKey(ctx, &req)
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, resp)
+	}
+}
+
+// ============================================================
+// Invoice Payment Handler
+// ============================================================
+
+func invoicePayHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "POST /v1/customers/{customerId}/credit-cards/{cardId}/invoice/pay")
+		defer span.End()
+
+		customerID := chi.URLParam(r, "customerId")
+		cardID := chi.URLParam(r, "cardId")
+
+		var req domain.InvoicePayRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		resp, err := bankSvc.PayInvoice(ctx, customerID, cardID, &req)
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// ============================================================
+// Dev Tools Handlers
+// ============================================================
+
+func devAddBalanceHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "POST /v1/dev/add-balance")
+		defer span.End()
+
+		var req domain.DevAddBalanceRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		resp, err := bankSvc.DevAddBalance(ctx, &req)
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func devSetCreditLimitHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "POST /v1/dev/set-credit-limit")
+		defer span.End()
+
+		var req domain.DevSetCreditLimitRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		resp, err := bankSvc.DevSetCreditLimit(ctx, &req)
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func devGenerateTransactionsHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "POST /v1/dev/generate-transactions")
+		defer span.End()
+
+		var req domain.DevGenerateTransactionsRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		resp, err := bankSvc.DevGenerateTransactions(ctx, &req)
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// ============================================================
+// Helper functions
+// ============================================================
 
 type errorResponse struct {
 	Error string `json:"error"`

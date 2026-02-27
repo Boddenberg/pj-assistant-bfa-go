@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/observability"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/port"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -923,4 +925,292 @@ func (s *BankingService) GetTransactionSummary(ctx context.Context, customerID s
 	defer span.End()
 
 	return s.store.GetTransactionSummary(ctx, customerID)
+}
+
+// ============================================================
+// Pix Key Registration
+// ============================================================
+
+// RegisterPixKey creates a new Pix key for the given customer.
+func (s *BankingService) RegisterPixKey(ctx context.Context, req *domain.PixKeyRegisterRequest) (*domain.PixKeyRegisterResponse, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.RegisterPixKey")
+	defer span.End()
+	span.SetAttributes(attribute.String("customer.id", req.CustomerID))
+
+	if req.CustomerID == "" {
+		return nil, &domain.ErrValidation{Field: "customerId", Message: "required"}
+	}
+
+	validTypes := map[string]bool{"cnpj": true, "email": true, "phone": true, "random": true}
+	if !validTypes[req.KeyType] {
+		return nil, &domain.ErrValidation{Field: "keyType", Message: "deve ser cnpj, email, phone ou random"}
+	}
+
+	// Get primary account for account_id
+	account, err := s.store.GetPrimaryAccount(ctx, req.CustomerID)
+	if err != nil {
+		return nil, err
+	}
+
+	keyValue := req.KeyValue
+	if req.KeyType == "random" {
+		keyValue = uuid.New().String()
+	} else if keyValue == "" {
+		return nil, &domain.ErrValidation{Field: "keyValue", Message: "required for non-random key type"}
+	}
+
+	key := &domain.PixKey{
+		ID:         uuid.New().String(),
+		AccountID:  account.ID,
+		CustomerID: req.CustomerID,
+		KeyType:    req.KeyType,
+		KeyValue:   keyValue,
+		Status:     "active",
+		CreatedAt:  time.Now(),
+	}
+
+	created, err := s.store.CreatePixKey(ctx, key)
+	if err != nil {
+		s.logger.Error("failed to register pix key",
+			zap.String("customer_id", req.CustomerID),
+			zap.String("key_type", req.KeyType),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	s.logger.Info("pix key registered",
+		zap.String("customer_id", req.CustomerID),
+		zap.String("key_type", req.KeyType),
+		zap.String("key_id", created.ID),
+	)
+
+	return &domain.PixKeyRegisterResponse{
+		KeyID:     created.ID,
+		KeyType:   created.KeyType,
+		KeyValue:  created.KeyValue,
+		Status:    created.Status,
+		CreatedAt: created.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// ============================================================
+// Invoice Payment
+// ============================================================
+
+// PayInvoice pays a credit card invoice (total, minimum or custom).
+func (s *BankingService) PayInvoice(ctx context.Context, customerID, cardID string, req *domain.InvoicePayRequest) (*domain.InvoicePayResponse, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.PayInvoice")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("customer.id", customerID),
+		attribute.String("card.id", cardID),
+	)
+
+	// Get current open invoice
+	invoices, err := s.store.ListCreditCardInvoices(ctx, customerID, cardID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the most recent open or closed (unpaid) invoice
+	var targetInvoice *domain.CreditCardInvoice
+	for i := range invoices {
+		if invoices[i].Status == "open" || invoices[i].Status == "closed" {
+			targetInvoice = &invoices[i]
+			break
+		}
+	}
+	if targetInvoice == nil {
+		return nil, &domain.ErrNotFound{Resource: "invoice", ID: cardID}
+	}
+
+	// Determine amount to pay
+	payAmount := req.Amount
+	switch req.PaymentType {
+	case "total":
+		payAmount = targetInvoice.TotalAmount
+	case "minimum":
+		payAmount = targetInvoice.MinimumPayment
+	case "custom":
+		if payAmount <= 0 {
+			return nil, &domain.ErrValidation{Field: "amount", Message: "valor deve ser positivo"}
+		}
+	default:
+		return nil, &domain.ErrValidation{Field: "paymentType", Message: "deve ser total, minimum ou custom"}
+	}
+
+	// Deduct from account balance
+	_, err = s.store.UpdateAccountBalance(ctx, customerID, -payAmount)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update invoice status
+	newStatus := "paid"
+	if req.PaymentType == "minimum" || (req.PaymentType == "custom" && payAmount < targetInvoice.TotalAmount) {
+		newStatus = "partially_paid"
+	}
+
+	err = s.store.UpdateCreditCardInvoiceStatus(ctx, targetInvoice.ID, newStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logger.Info("invoice paid",
+		zap.String("customer_id", customerID),
+		zap.String("card_id", cardID),
+		zap.String("invoice_id", targetInvoice.ID),
+		zap.Float64("amount", payAmount),
+		zap.String("payment_type", req.PaymentType),
+	)
+
+	return &domain.InvoicePayResponse{
+		PaymentID:        uuid.New().String(),
+		Status:           "completed",
+		Amount:           payAmount,
+		PaidAt:           time.Now().Format(time.RFC3339),
+		NewInvoiceStatus: newStatus,
+	}, nil
+}
+
+// ============================================================
+// Dev Tools
+// ============================================================
+
+// DevAddBalance adds the given amount to the customer's primary account balance.
+func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBalanceRequest) (*domain.DevAddBalanceResponse, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.DevAddBalance")
+	defer span.End()
+
+	if req.CustomerID == "" {
+		return nil, &domain.ErrValidation{Field: "customerId", Message: "required"}
+	}
+	if req.Amount <= 0 {
+		return nil, &domain.ErrValidation{Field: "amount", Message: "deve ser positivo"}
+	}
+
+	acct, err := s.store.UpdateAccountBalance(ctx, req.CustomerID, req.Amount)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logger.Info("DEV: balance added",
+		zap.String("customer_id", req.CustomerID),
+		zap.Float64("amount", req.Amount),
+		zap.Float64("new_balance", acct.Balance),
+	)
+
+	return &domain.DevAddBalanceResponse{
+		Success:    true,
+		NewBalance: acct.Balance,
+		Message:    fmt.Sprintf("R$ %.2f adicionados ao saldo", req.Amount),
+	}, nil
+}
+
+// DevSetCreditLimit sets the credit limit of the customer's first credit card.
+func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevSetCreditLimitRequest) (*domain.DevSetCreditLimitResponse, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.DevSetCreditLimit")
+	defer span.End()
+
+	if req.CustomerID == "" {
+		return nil, &domain.ErrValidation{Field: "customerId", Message: "required"}
+	}
+	if req.Limit <= 0 {
+		return nil, &domain.ErrValidation{Field: "limit", Message: "deve ser positivo"}
+	}
+
+	err := s.store.UpdateCreditCardLimit(ctx, req.CustomerID, req.Limit)
+	if err != nil {
+		return nil, err
+	}
+
+	s.logger.Info("DEV: credit limit updated",
+		zap.String("customer_id", req.CustomerID),
+		zap.Float64("new_limit", req.Limit),
+	)
+
+	return &domain.DevSetCreditLimitResponse{
+		Success:  true,
+		NewLimit: req.Limit,
+		Message:  fmt.Sprintf("Limite de crédito atualizado para R$ %.2f", req.Limit),
+	}, nil
+}
+
+// DevGenerateTransactions generates random transactions for testing.
+func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domain.DevGenerateTransactionsRequest) (*domain.DevGenerateTransactionsResponse, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.DevGenerateTransactions")
+	defer span.End()
+
+	if req.CustomerID == "" {
+		return nil, &domain.ErrValidation{Field: "customerId", Message: "required"}
+	}
+	if req.Count <= 0 || req.Count > 100 {
+		return nil, &domain.ErrValidation{Field: "count", Message: "deve ser entre 1 e 100"}
+	}
+
+	// Get primary account
+	acct, err := s.store.GetPrimaryAccount(ctx, req.CustomerID)
+	if err != nil {
+		return nil, err
+	}
+
+	txTypes := []struct {
+		Type     string
+		IsDebit  bool
+		Descs    []string
+		Category string
+	}{
+		{"pix_sent", true, []string{"Pix enviado - Maria Silva", "Pix enviado - João LTDA", "Pix enviado - Ana Costa"}, "transferencia"},
+		{"pix_received", false, []string{"Pix recebido - Tech Corp", "Pix recebido - Vendas Online", "Pix recebido - Cliente ABC"}, "recebimento"},
+		{"debit_purchase", true, []string{"Supermercado Extra", "Posto Shell", "Farmácia São Paulo", "Restaurante Sabor"}, "compras"},
+		{"credit_purchase", true, []string{"Amazon AWS", "Google Cloud", "Material Escritório", "Uber Business"}, "tecnologia"},
+		{"transfer_in", false, []string{"TED recebida - Fornecedor A", "DOC recebido - Partner B"}, "recebimento"},
+		{"transfer_out", true, []string{"TED enviada - Aluguel", "TED enviada - Fornecedor"}, "despesas"},
+		{"bill_payment", true, []string{"Conta de luz", "Conta de telefone", "Internet Fibra", "IPTU"}, "contas"},
+	}
+
+	generated := 0
+	now := time.Now()
+
+	for i := 0; i < req.Count; i++ {
+		txInfo := txTypes[rand.Intn(len(txTypes))]
+		desc := txInfo.Descs[rand.Intn(len(txInfo.Descs))]
+		amount := float64(rand.Intn(490000)+1000) / 100.0 // R$ 10.00 to R$ 5000.00
+		daysAgo := rand.Intn(30)
+		txDate := now.AddDate(0, 0, -daysAgo)
+
+		if txInfo.IsDebit {
+			amount = -amount
+		}
+
+		tx := map[string]any{
+			"id":           uuid.New().String(),
+			"customer_id":  req.CustomerID,
+			"account_id":   acct.ID,
+			"date":         txDate.Format(time.RFC3339),
+			"description":  desc,
+			"amount":       amount,
+			"type":         txInfo.Type,
+			"category":     txInfo.Category,
+			"counterparty": strings.TrimPrefix(strings.TrimPrefix(desc, "Pix enviado - "), "Pix recebido - "),
+		}
+
+		if err := s.store.InsertTransaction(ctx, tx); err != nil {
+			s.logger.Warn("DEV: failed to insert transaction", zap.Int("index", i), zap.Error(err))
+			continue
+		}
+		generated++
+	}
+
+	s.logger.Info("DEV: transactions generated",
+		zap.String("customer_id", req.CustomerID),
+		zap.Int("generated", generated),
+	)
+
+	return &domain.DevGenerateTransactionsResponse{
+		Success:   true,
+		Generated: generated,
+		Message:   fmt.Sprintf("%d transações geradas com sucesso", generated),
+	}, nil
 }

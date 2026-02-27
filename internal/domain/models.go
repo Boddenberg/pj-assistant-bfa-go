@@ -761,6 +761,7 @@ type CreditCardRequestBody struct {
 	CustomerID     string  `json:"customerId"`
 	PreferredBrand string  `json:"preferredBrand,omitempty"`
 	RequestedLimit float64 `json:"requestedLimit"`
+	DueDay         int     `json:"dueDay,omitempty"`
 	VirtualCard    bool    `json:"virtualCard"`
 }
 
@@ -902,6 +903,88 @@ type ListResponse[T any] struct {
 type SuccessResponse struct {
 	Message string `json:"message"`
 	ID      string `json:"id,omitempty"`
+}
+
+// ============================================================
+// Pix Key Registration — POST /v1/pix/keys/register
+// ============================================================
+
+// PixKeyRegisterRequest is the body for POST /v1/pix/keys/register.
+type PixKeyRegisterRequest struct {
+	CustomerID string `json:"customerId"`
+	KeyType    string `json:"keyType"`  // cnpj, email, phone, random
+	KeyValue   string `json:"keyValue"` // empty for random
+}
+
+// PixKeyRegisterResponse is returned by POST /v1/pix/keys/register.
+type PixKeyRegisterResponse struct {
+	KeyID     string `json:"keyId"`
+	KeyType   string `json:"keyType"`
+	KeyValue  string `json:"keyValue"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// ============================================================
+// Invoice Payment — POST /v1/customers/:id/credit-cards/:cardId/invoice/pay
+// ============================================================
+
+// InvoicePayRequest is the body for paying a credit card invoice.
+type InvoicePayRequest struct {
+	Amount      float64 `json:"amount"`
+	PaymentType string  `json:"paymentType"` // total, minimum, custom
+}
+
+// InvoicePayResponse is returned after paying a credit card invoice.
+type InvoicePayResponse struct {
+	PaymentID        string  `json:"paymentId"`
+	Status           string  `json:"status"`
+	Amount           float64 `json:"amount"`
+	PaidAt           string  `json:"paidAt"`
+	NewInvoiceStatus string  `json:"newInvoiceStatus"`
+}
+
+// ============================================================
+// Dev Tools — endpoints for development/testing
+// ============================================================
+
+// DevAddBalanceRequest is the body for POST /v1/dev/add-balance.
+type DevAddBalanceRequest struct {
+	CustomerID string  `json:"customerId"`
+	Amount     float64 `json:"amount"`
+}
+
+// DevAddBalanceResponse is returned by POST /v1/dev/add-balance.
+type DevAddBalanceResponse struct {
+	Success    bool    `json:"success"`
+	NewBalance float64 `json:"newBalance"`
+	Message    string  `json:"message"`
+}
+
+// DevSetCreditLimitRequest is the body for POST /v1/dev/set-credit-limit.
+type DevSetCreditLimitRequest struct {
+	CustomerID string  `json:"customerId"`
+	Limit      float64 `json:"limit"`
+}
+
+// DevSetCreditLimitResponse is returned by POST /v1/dev/set-credit-limit.
+type DevSetCreditLimitResponse struct {
+	Success  bool    `json:"success"`
+	NewLimit float64 `json:"newLimit"`
+	Message  string  `json:"message"`
+}
+
+// DevGenerateTransactionsRequest is the body for POST /v1/dev/generate-transactions.
+type DevGenerateTransactionsRequest struct {
+	CustomerID string `json:"customerId"`
+	Count      int    `json:"count"`
+}
+
+// DevGenerateTransactionsResponse is returned by POST /v1/dev/generate-transactions.
+type DevGenerateTransactionsResponse struct {
+	Success   bool   `json:"success"`
+	Generated int    `json:"generated"`
+	Message   string `json:"message"`
 }
 
 // ============================================================

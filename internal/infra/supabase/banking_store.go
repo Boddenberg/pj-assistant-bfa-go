@@ -672,6 +672,15 @@ func (c *Client) GetTransactionSummary(ctx context.Context, customerID string) (
 	return summary, nil
 }
 
+// InsertTransaction inserts a raw transaction record (used by dev tools).
+func (c *Client) InsertTransaction(ctx context.Context, data map[string]any) error {
+	ctx, span := tracer.Start(ctx, "Supabase.InsertTransaction")
+	defer span.End()
+
+	_, err := c.doPost(ctx, "customer_transactions", data)
+	return err
+}
+
 // --- Spending Analytics ---
 
 func (c *Client) GetSpendingSummary(ctx context.Context, customerID, periodType string) (*domain.SpendingSummary, error) {
@@ -909,6 +918,107 @@ func (c *Client) MarkNotificationRead(ctx context.Context, notifID string) error
 	return c.doPatch(ctx, fmt.Sprintf("notifications?id=eq.%s", notifID), map[string]any{
 		"is_read": true,
 		"read_at": time.Now().Format(time.RFC3339),
+	})
+}
+
+// --- Pix Key Registration ---
+
+func (c *Client) CreatePixKey(ctx context.Context, key *domain.PixKey) (*domain.PixKey, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.CreatePixKey")
+	defer span.End()
+
+	data := map[string]any{
+		"id":          key.ID,
+		"account_id":  key.AccountID,
+		"customer_id": key.CustomerID,
+		"key_type":    key.KeyType,
+		"key_value":   key.KeyValue,
+		"status":      "active",
+	}
+
+	body, err := c.doPost(ctx, "pix_keys", data)
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []domain.PixKey
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, fmt.Errorf("decode pix_keys: %w", err)
+	}
+	if len(rows) == 0 {
+		return key, nil
+	}
+	return &rows[0], nil
+}
+
+// --- Account Balance Update (dev tools) ---
+
+func (c *Client) UpdateAccountBalance(ctx context.Context, customerID string, delta float64) (*domain.Account, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.UpdateAccountBalance")
+	defer span.End()
+
+	// Get primary account
+	accts, err := c.ListAccounts(ctx, customerID)
+	if err != nil {
+		return nil, err
+	}
+	if len(accts) == 0 {
+		return nil, &domain.ErrNotFound{Resource: "account", ID: customerID}
+	}
+
+	acct := accts[0]
+	newBalance := acct.Balance + delta
+	newAvailable := acct.AvailableBalance + delta
+
+	err = c.doPatch(ctx, fmt.Sprintf("accounts?id=eq.%s", acct.ID), map[string]any{
+		"balance":           newBalance,
+		"available_balance": newAvailable,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	acct.Balance = newBalance
+	acct.AvailableBalance = newAvailable
+	return &acct, nil
+}
+
+// --- Credit Card Limit Update (dev tools) ---
+
+func (c *Client) UpdateCreditCardLimit(ctx context.Context, customerID string, newLimit float64) error {
+	ctx, span := tracer.Start(ctx, "Supabase.UpdateCreditCardLimit")
+	defer span.End()
+
+	// Get first card for customer
+	cards, err := c.ListCreditCards(ctx, customerID)
+	if err != nil {
+		return err
+	}
+	if len(cards) == 0 {
+		return &domain.ErrNotFound{Resource: "credit_card", ID: customerID}
+	}
+
+	card := cards[0]
+	usedLimit := card.UsedLimit
+	availableLimit := newLimit - usedLimit
+	if availableLimit < 0 {
+		availableLimit = 0
+	}
+
+	return c.doPatch(ctx, fmt.Sprintf("credit_cards?id=eq.%s", card.ID), map[string]any{
+		"credit_limit":   newLimit,
+		"available_limit": availableLimit,
+	})
+}
+
+// --- Invoice Status Update ---
+
+func (c *Client) UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, status string) error {
+	ctx, span := tracer.Start(ctx, "Supabase.UpdateCreditCardInvoiceStatus")
+	defer span.End()
+
+	return c.doPatch(ctx, fmt.Sprintf("credit_card_invoices?id=eq.%s", invoiceID), map[string]any{
+		"status": status,
 	})
 }
 
