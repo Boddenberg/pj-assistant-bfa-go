@@ -1334,3 +1334,139 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		Message:   fmt.Sprintf("%d transações geradas com sucesso", generated),
 	}, nil
 }
+
+// DevAddCardPurchase simulates credit card purchases for testing.
+func (s *BankingService) DevAddCardPurchase(ctx context.Context, req *domain.DevAddCardPurchaseRequest) (*domain.DevAddCardPurchaseResponse, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.DevAddCardPurchase")
+	defer span.End()
+
+	if req.CustomerID == "" {
+		return nil, &domain.ErrValidation{Field: "customerId", Message: "required"}
+	}
+	if req.CardID == "" {
+		return nil, &domain.ErrValidation{Field: "cardId", Message: "required"}
+	}
+	if req.Amount <= 0 {
+		return nil, &domain.ErrValidation{Field: "amount", Message: "deve ser positivo"}
+	}
+	if req.Mode != "today" && req.Mode != "random" {
+		return nil, &domain.ErrValidation{Field: "mode", Message: "deve ser 'today' ou 'random'"}
+	}
+	if req.Count <= 0 {
+		req.Count = 1
+	}
+	if req.Mode == "today" {
+		req.Count = 1
+	}
+	if req.Count > 50 {
+		return nil, &domain.ErrValidation{Field: "count", Message: "máximo 50"}
+	}
+
+	// Verify card exists and is active
+	card, err := s.store.GetCreditCard(ctx, req.CustomerID, req.CardID)
+	if err != nil {
+		return nil, err
+	}
+	if card.Status != "active" {
+		return nil, &domain.ErrValidation{Field: "cardId", Message: "cartão não está ativo"}
+	}
+
+	merchants := []struct {
+		Name     string
+		Category string
+	}{
+		{"Restaurante Sabor & Arte", "food"},
+		{"Posto Shell BR-101", "fuel"},
+		{"Amazon AWS", "technology"},
+		{"Uber Business", "transport"},
+		{"Netflix Assinatura", "subscription"},
+		{"Google Cloud Platform", "technology"},
+		{"iFood Corporativo", "food"},
+		{"Kalunga Papelaria", "office_supplies"},
+		{"99 Táxi Corporativo", "transport"},
+		{"Adobe Creative Cloud", "subscription"},
+		{"Hotel Ibis Business", "travel"},
+		{"Seguro Porto PJ", "insurance"},
+		{"Copel Energia", "utilities"},
+		{"Google Ads", "marketing"},
+		{"Contabilidade Express", "professional_services"},
+		{"DAS Simples Nacional", "tax"},
+		{"Limpeza & Manutenção", "maintenance"},
+	}
+
+	now := time.Now()
+	generated := 0
+	var totalAmount float64
+
+	for i := 0; i < req.Count; i++ {
+		m := merchants[rand.Intn(len(merchants))]
+
+		var txDate time.Time
+		if req.Mode == "today" {
+			txDate = now
+		} else {
+			// Random date between day 1 of current month and today
+			firstOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+			dayRange := int(now.Sub(firstOfMonth).Hours()/24) + 1
+			if dayRange < 1 {
+				dayRange = 1
+			}
+			randomDay := rand.Intn(dayRange)
+			txDate = firstOfMonth.AddDate(0, 0, randomDay)
+			// Add random hour
+			txDate = txDate.Add(time.Duration(rand.Intn(14)+8) * time.Hour)
+			txDate = txDate.Add(time.Duration(rand.Intn(60)) * time.Minute)
+		}
+
+		tx := map[string]any{
+			"id":               uuid.New().String(),
+			"card_id":          req.CardID,
+			"customer_id":      req.CustomerID,
+			"transaction_date": txDate.Format(time.RFC3339),
+			"amount":           req.Amount,
+			"merchant_name":    m.Name,
+			"category":         m.Category,
+			"description":      fmt.Sprintf("Compra - %s", m.Name),
+			"installments":     1,
+			"current_installment": 1,
+			"transaction_type": "purchase",
+			"status":           "confirmed",
+		}
+
+		if txErr := s.store.InsertCreditCardTransaction(ctx, tx); txErr != nil {
+			s.logger.Warn("DEV: failed to insert card purchase", zap.Int("index", i), zap.Error(txErr))
+			continue
+		}
+		generated++
+		totalAmount += req.Amount
+	}
+
+	// Update card used_limit and available_limit
+	if totalAmount > 0 {
+		newUsed := card.UsedLimit + totalAmount
+		newAvailable := card.CreditLimit - newUsed
+		if newAvailable < 0 {
+			newAvailable = 0
+		}
+		if err := s.store.UpdateCreditCardUsedLimit(ctx, req.CardID, newUsed, newAvailable); err != nil {
+			s.logger.Error("DEV: failed to update card limits",
+				zap.String("card_id", req.CardID),
+				zap.Error(err),
+			)
+		}
+	}
+
+	s.logger.Info("DEV: card purchases generated",
+		zap.String("customer_id", req.CustomerID),
+		zap.String("card_id", req.CardID),
+		zap.Int("generated", generated),
+		zap.Float64("total_amount", totalAmount),
+	)
+
+	return &domain.DevAddCardPurchaseResponse{
+		Success:     true,
+		Generated:   generated,
+		TotalAmount: totalAmount,
+		Message:     fmt.Sprintf("%d compras adicionadas ao cartão •••• %s", generated, card.CardNumberLast4),
+	}, nil
+}

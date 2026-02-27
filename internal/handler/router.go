@@ -144,6 +144,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Post("/dev/add-balance", devAddBalanceHandler(bankSvc, logger))
 		r.Post("/dev/set-credit-limit", devSetCreditLimitHandler(bankSvc, logger))
 		r.Post("/dev/generate-transactions", devGenerateTransactionsHandler(bankSvc, logger))
+		r.Post("/dev/add-card-purchase", devAddCardPurchaseHandler(bankSvc, logger))
 
 		// =============================================
 		// 9. 🔐 Autenticação
@@ -1609,6 +1610,27 @@ func devGenerateTransactionsHandler(bankSvc *service.BankingService, logger *zap
 		}
 
 		resp, err := bankSvc.DevGenerateTransactions(ctx, &req)
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func devAddCardPurchaseHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "POST /v1/dev/add-card-purchase")
+		defer span.End()
+
+		var req domain.DevAddCardPurchaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+
+		resp, err := bankSvc.DevAddCardPurchase(ctx, &req)
 		if err != nil {
 			handleServiceError(w, err, logger)
 			return

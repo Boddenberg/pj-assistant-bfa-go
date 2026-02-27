@@ -1024,6 +1024,27 @@ func (c *Client) UpdateCreditCardLimit(ctx context.Context, customerID string, n
 	})
 }
 
+// --- Credit Card Transaction Insert (dev tools) ---
+
+func (c *Client) InsertCreditCardTransaction(ctx context.Context, data map[string]any) error {
+	ctx, span := tracer.Start(ctx, "Supabase.InsertCreditCardTransaction")
+	defer span.End()
+
+	_, err := c.doPost(ctx, "credit_card_transactions", data)
+	return err
+}
+
+// UpdateCreditCardUsedLimit patches used_limit and available_limit on a card.
+func (c *Client) UpdateCreditCardUsedLimit(ctx context.Context, cardID string, usedLimit, availableLimit float64) error {
+	ctx, span := tracer.Start(ctx, "Supabase.UpdateCreditCardUsedLimit")
+	defer span.End()
+
+	return c.doPatch(ctx, fmt.Sprintf("credit_cards?id=eq.%s", cardID), map[string]any{
+		"used_limit":      usedLimit,
+		"available_limit": availableLimit,
+	})
+}
+
 // --- Invoice Status Update ---
 
 func (c *Client) UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, status string) error {

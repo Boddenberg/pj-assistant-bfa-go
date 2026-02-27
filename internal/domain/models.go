@@ -987,6 +987,23 @@ type DevGenerateTransactionsResponse struct {
 	Message   string `json:"message"`
 }
 
+// DevAddCardPurchaseRequest is the body for POST /v1/dev/add-card-purchase.
+type DevAddCardPurchaseRequest struct {
+	CustomerID string  `json:"customerId"`
+	CardID     string  `json:"cardId"`
+	Amount     float64 `json:"amount"`
+	Mode       string  `json:"mode"`  // "today" or "random"
+	Count      int     `json:"count"` // default 1
+}
+
+// DevAddCardPurchaseResponse is returned by POST /v1/dev/add-card-purchase.
+type DevAddCardPurchaseResponse struct {
+	Success     bool    `json:"success"`
+	Generated   int     `json:"generated"`
+	TotalAmount float64 `json:"totalAmount"`
+	Message     string  `json:"message"`
+}
+
 // ============================================================
 // Auth — Request / Response types (matches frontend API contract)
 // ============================================================
