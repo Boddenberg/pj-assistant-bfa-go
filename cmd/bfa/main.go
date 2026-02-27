@@ -113,7 +113,10 @@ func main() {
 		bankSvc = service.NewBankingService(supabaseClient, metrics, logger)
 		logger.Info("banking service enabled with Supabase store")
 
-		authSvc = service.NewAuthService(supabaseClient, cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL, logger)
+		authSvc = service.NewAuthService(supabaseClient, cfg.JWTSecret, cfg.JWTAccessTTL, cfg.JWTRefreshTTL, cfg.DevAuth, logger)
+		if cfg.DevAuth {
+			logger.Warn("⚠️  DEV_AUTH=true — plain-text password fallback enabled, NEVER use in production")
+		}
 		logger.Info("auth service enabled")
 	} else {
 		logger.Warn("banking service: Supabase not configured, banking routes unavailable")

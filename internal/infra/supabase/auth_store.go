@@ -374,3 +374,32 @@ func (c *Client) UpdateRepresentative(ctx context.Context, customerID string, up
 	// Representative fields are stored in customer_profiles
 	return c.UpdateCustomerProfile(ctx, customerID, updates)
 }
+
+// DevLoginLookup looks up a CPF+password pair in the dev_logins table (plain-text).
+// Only used when DEV_AUTH=true. Never call this in production.
+func (c *Client) DevLoginLookup(ctx context.Context, cpf, password string) (*domain.CustomerProfile, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.DevLoginLookup")
+	defer span.End()
+
+	// Query dev_logins joining customer_profiles
+	path := fmt.Sprintf("dev_logins?cpf=eq.%s&password=eq.%s&limit=1&select=customer_id", cpf, password)
+	body, err := c.doRequest(ctx, http.MethodGet, path)
+	if err != nil {
+		return nil, fmt.Errorf("dev_logins lookup: %w", err)
+	}
+	if body == nil || string(body) == "[]" {
+		return nil, nil // not found = wrong credentials
+	}
+
+	var rows []struct {
+		CustomerID string `json:"customer_id"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, fmt.Errorf("decode dev_logins: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	return c.GetCustomerByID(ctx, rows[0].CustomerID)
+}

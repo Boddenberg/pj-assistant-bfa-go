@@ -37,16 +37,18 @@ type AuthService struct {
 	jwtSecret  []byte
 	accessTTL  time.Duration
 	refreshTTL time.Duration
+	devAuth    bool
 	logger     *zap.Logger
 }
 
 // NewAuthService creates a new auth service.
-func NewAuthService(store port.AuthStore, jwtSecret string, accessTTL, refreshTTL time.Duration, logger *zap.Logger) *AuthService {
+func NewAuthService(store port.AuthStore, jwtSecret string, accessTTL, refreshTTL time.Duration, devAuth bool, logger *zap.Logger) *AuthService {
 	return &AuthService{
 		store:      store,
 		jwtSecret:  []byte(jwtSecret),
 		accessTTL:  accessTTL,
 		refreshTTL: refreshTTL,
+		devAuth:    devAuth,
 		logger:     logger,
 	}
 }
@@ -137,6 +139,10 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	if err != nil {
 		var notFound *domain.ErrNotFound
 		if errors.As(err, &notFound) {
+			// No bcrypt credentials — try dev_logins fallback if enabled
+			if s.devAuth {
+				return s.devLoginFallback(ctx, profile, req.Password)
+			}
 			// Corrupted registration: profile exists but no credentials were saved.
 			// Treat as invalid credentials to avoid leaking internal state.
 			s.logger.Warn("login: credentials not found for existing profile (corrupted registration)",
@@ -225,6 +231,45 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 		CustomerID:   profile.CustomerID,
 		CustomerName: profile.Name,
 		CompanyName:  profile.CompanyName,
+	}, nil
+}
+
+// devLoginFallback is called when DEV_AUTH=true and auth_credentials is missing.
+// It checks the dev_logins table (plain-text passwords) and, if matched,
+// issues a real JWT so the rest of the flow works normally.
+func (s *AuthService) devLoginFallback(ctx context.Context, profile *domain.CustomerProfile, password string) (*domain.LoginResponse, error) {
+	s.logger.Warn("DEV_AUTH: attempting dev_logins fallback",
+		zap.String("customer_id", profile.CustomerID),
+	)
+
+	devProfile, err := s.store.DevLoginLookup(ctx, profile.RepresentanteCPF, password)
+	if err != nil {
+		return nil, fmt.Errorf("dev login lookup: %w", err)
+	}
+	if devProfile == nil {
+		return nil, &domain.ErrUnauthorized{Message: "Credenciais inválidas"}
+	}
+
+	accessToken, err := s.signAccessToken(devProfile.CustomerID, devProfile.Document)
+	if err != nil {
+		return nil, fmt.Errorf("sign access token: %w", err)
+	}
+	refreshToken, _, err := s.generateRefreshToken()
+	if err != nil {
+		return nil, fmt.Errorf("generate refresh token: %w", err)
+	}
+
+	s.logger.Info("DEV_AUTH: login successful via dev_logins",
+		zap.String("customer_id", devProfile.CustomerID),
+	)
+
+	return &domain.LoginResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int(s.accessTTL.Seconds()),
+		CustomerID:   devProfile.CustomerID,
+		CustomerName: devProfile.Name,
+		CompanyName:  devProfile.CompanyName,
 	}, nil
 }
 

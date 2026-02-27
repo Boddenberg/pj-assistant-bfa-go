@@ -133,4 +133,7 @@ type AuthStore interface {
 	// Profile updates
 	UpdateCustomerProfile(ctx context.Context, customerID string, updates map[string]any) (*domain.CustomerProfile, error)
 	UpdateRepresentative(ctx context.Context, customerID string, updates map[string]any) (*domain.CustomerProfile, error)
+
+	// Dev auth (DEV_AUTH=true only) — plain-text password lookup in dev_logins table
+	DevLoginLookup(ctx context.Context, cpf, password string) (*domain.CustomerProfile, error)
 }

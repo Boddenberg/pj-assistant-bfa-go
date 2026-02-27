@@ -39,9 +39,12 @@ type Config struct {
 	UseSupabase        bool
 
 	// JWT / Auth
-	JWTSecret    string
-	JWTAccessTTL time.Duration
+	JWTSecret     string
+	JWTAccessTTL  time.Duration
 	JWTRefreshTTL time.Duration
+
+	// Dev mode
+	DevAuth bool // DEV_AUTH=true bypasses bcrypt, uses dev_logins table
 }
 
 // Load reads configuration from environment variables with defaults.
@@ -72,6 +75,8 @@ func Load() *Config {
 		JWTSecret:     getEnv("JWT_SECRET", "bfa-default-dev-secret-change-me"),
 		JWTAccessTTL:  getEnvDuration("JWT_ACCESS_TTL", 15*time.Minute),
 		JWTRefreshTTL: getEnvDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
+
+		DevAuth: getEnv("DEV_AUTH", "false") == "true",
 	}
 }
 
