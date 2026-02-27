@@ -236,8 +236,8 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 		return nil, err
 	}
 
-	// Block self-transfer: check if destination key belongs to the same customer
-	destKey, lookupErr := s.store.LookupPixKey(ctx, req.DestinationKeyType, req.DestinationKeyValue)
+	// Block self-transfer: look up destination key (uses auto-detect if keyType is empty)
+	destKey, lookupErr := s.LookupPixKey(ctx, req.DestinationKeyType, req.DestinationKeyValue)
 	if lookupErr == nil && destKey != nil && destKey.CustomerID == customerID {
 		return nil, &domain.ErrValidation{Field: "recipientKey", Message: "Não é possível transferir para você mesmo"}
 	}

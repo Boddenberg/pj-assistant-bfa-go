@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -153,6 +155,7 @@ func (c *Client) CreatePixTransfer(ctx context.Context, customerID string, req *
 		"description":           req.Description,
 		"status":                "pending",
 		"funded_by":             req.FundedBy,
+		"end_to_end_id":         fmt.Sprintf("E%s", strings.ReplaceAll(uuid.New().String(), "-", "")[:31]),
 	}
 	if req.CreditCardID != "" {
 		row["credit_card_id"] = req.CreditCardID
