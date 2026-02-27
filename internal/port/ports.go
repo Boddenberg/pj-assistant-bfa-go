@@ -58,6 +58,12 @@ type BankingStore interface {
 	GetPixTransfer(ctx context.Context, customerID, transferID string) (*domain.PixTransfer, error)
 	UpdatePixTransferStatus(ctx context.Context, transferID, status string) error
 
+	// PIX Receipts
+	SavePixReceipt(ctx context.Context, receipt *domain.PixReceipt) (*domain.PixReceipt, error)
+	GetPixReceipt(ctx context.Context, receiptID string) (*domain.PixReceipt, error)
+	GetPixReceiptByTransferID(ctx context.Context, transferID string) (*domain.PixReceipt, error)
+	ListPixReceipts(ctx context.Context, customerID string) ([]domain.PixReceipt, error)
+
 	// Scheduled Transfers
 	CreateScheduledTransfer(ctx context.Context, customerID string, req *domain.ScheduledTransferRequest) (*domain.ScheduledTransfer, error)
 	ListScheduledTransfers(ctx context.Context, customerID string) ([]domain.ScheduledTransfer, error)

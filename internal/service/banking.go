@@ -291,6 +291,26 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 	if senderName == "" || senderName == "Destinatário" {
 		senderName = "Remetente"
 	}
+	// Sender full lookup data for receipts
+	senderDoc, senderBank, senderBranch, senderAcct := "", "", "", ""
+	if sName, sDoc, sBank, sBranch, sAcct, sErr := s.store.GetCustomerLookupData(ctx, customerID); sErr == nil {
+		if senderName == "Remetente" {
+			senderName = sName
+		}
+		senderDoc = sDoc
+		senderBank = sBank
+		senderBranch = sBranch
+		senderAcct = sAcct
+	}
+	// Destination full lookup data for receipts
+	destBank, destBranch, destAcct := "", "", ""
+	if destCustomerID != "" {
+		if _, _, dBank, dBranch, dAcct, dErr := s.store.GetCustomerLookupData(ctx, destCustomerID); dErr == nil {
+			destBank = dBank
+			destBranch = dBranch
+			destAcct = dAcct
+		}
+	}
 
 	transfer, err := s.store.CreatePixTransfer(ctx, customerID, req)
 	if err != nil {
@@ -418,6 +438,78 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 		transfer.Status = "completed"
 	}
 
+	// ── 4. Save PIX receipt (comprovante) for sender ──
+	nowStr := now.Format(time.RFC3339)
+	installments := req.CreditCardInstallments
+	if installments <= 0 {
+		installments = 1
+	}
+	receiptSent := &domain.PixReceipt{
+		ID:                uuid.New().String(),
+		TransferID:        transfer.ID,
+		CustomerID:        customerID,
+		Direction:         "sent",
+		Amount:            req.Amount,
+		Description:       req.Description,
+		EndToEndID:        transfer.EndToEndID,
+		FundedBy:          req.FundedBy,
+		Installments:      installments,
+		SenderName:        senderName,
+		SenderDocument:    senderDoc,
+		SenderBank:        senderBank,
+		SenderBranch:      senderBranch,
+		SenderAccount:     senderAcct,
+		RecipientName:     transfer.DestinationName,
+		RecipientDocument: transfer.DestinationDocument,
+		RecipientBank:     destBank,
+		RecipientBranch:   destBranch,
+		RecipientAccount:  destAcct,
+		RecipientKeyType:  transfer.DestinationKeyType,
+		RecipientKeyValue: transfer.DestinationKeyValue,
+		Status:            "completed",
+		ExecutedAt:        nowStr,
+		CreatedAt:         nowStr,
+	}
+	if savedReceipt, rcptErr := s.store.SavePixReceipt(ctx, receiptSent); rcptErr != nil {
+		s.logger.Error("failed to save pix receipt for sender",
+			zap.String("transfer_id", transfer.ID), zap.Error(rcptErr))
+	} else {
+		transfer.ReceiptID = savedReceipt.ID
+	}
+
+	// ── 5. Save PIX receipt for destination (if internal) ──
+	if destCustomerID != "" {
+		receiptReceived := &domain.PixReceipt{
+			ID:                uuid.New().String(),
+			TransferID:        transfer.ID,
+			CustomerID:        destCustomerID,
+			Direction:         "received",
+			Amount:            req.Amount,
+			Description:       req.Description,
+			EndToEndID:        transfer.EndToEndID,
+			FundedBy:          req.FundedBy,
+			SenderName:        senderName,
+			SenderDocument:    senderDoc,
+			SenderBank:        senderBank,
+			SenderBranch:      senderBranch,
+			SenderAccount:     senderAcct,
+			RecipientName:     transfer.DestinationName,
+			RecipientDocument: transfer.DestinationDocument,
+			RecipientBank:     destBank,
+			RecipientBranch:   destBranch,
+			RecipientAccount:  destAcct,
+			RecipientKeyType:  transfer.DestinationKeyType,
+			RecipientKeyValue: transfer.DestinationKeyValue,
+			Status:            "completed",
+			ExecutedAt:        nowStr,
+			CreatedAt:         nowStr,
+		}
+		if _, rcptErr := s.store.SavePixReceipt(ctx, receiptReceived); rcptErr != nil {
+			s.logger.Error("failed to save pix receipt for destination",
+				zap.String("dest_customer_id", destCustomerID), zap.Error(rcptErr))
+		}
+	}
+
 	s.logger.Info("PIX transfer completed",
 		zap.String("customer_id", customerID),
 		zap.String("dest_customer_id", destCustomerID),
@@ -457,6 +549,31 @@ func (s *BankingService) CancelPixTransfer(ctx context.Context, customerID, tran
 	}
 
 	return s.store.UpdatePixTransferStatus(ctx, transferID, "cancelled")
+}
+
+// ============================================================
+// PIX Receipts (Comprovantes)
+// ============================================================
+
+func (s *BankingService) GetPixReceipt(ctx context.Context, receiptID string) (*domain.PixReceipt, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.GetPixReceipt")
+	defer span.End()
+
+	return s.store.GetPixReceipt(ctx, receiptID)
+}
+
+func (s *BankingService) GetPixReceiptByTransferID(ctx context.Context, transferID string) (*domain.PixReceipt, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.GetPixReceiptByTransferID")
+	defer span.End()
+
+	return s.store.GetPixReceiptByTransferID(ctx, transferID)
+}
+
+func (s *BankingService) ListPixReceipts(ctx context.Context, customerID string) ([]domain.PixReceipt, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.ListPixReceipts")
+	defer span.End()
+
+	return s.store.ListPixReceipts(ctx, customerID)
 }
 
 // ============================================================

@@ -168,6 +168,36 @@ type PixTransfer struct {
 	ScheduledFor           *time.Time `json:"scheduled_for,omitempty"`
 	ExecutedAt             *time.Time `json:"executed_at,omitempty"`
 	CreatedAt              time.Time  `json:"created_at"`
+	ReceiptID              string     `json:"receipt_id,omitempty"` // set in memory after receipt creation
+}
+
+// PixReceipt represents a Pix transfer receipt (comprovante).
+type PixReceipt struct {
+	ID                string  `json:"id"`
+	TransferID        string  `json:"transfer_id"`
+	CustomerID        string  `json:"customer_id"`
+	Direction         string  `json:"direction"` // "sent" or "received"
+	Amount            float64 `json:"amount"`
+	Description       string  `json:"description,omitempty"`
+	EndToEndID        string  `json:"end_to_end_id"`
+	FundedBy          string  `json:"funded_by"`
+	Installments      int     `json:"installments,omitempty"`
+	SenderName        string  `json:"sender_name"`
+	SenderDocument    string  `json:"sender_document"`
+	SenderBank        string  `json:"sender_bank"`
+	SenderBranch      string  `json:"sender_branch"`
+	SenderAccount     string  `json:"sender_account"`
+	RecipientName     string  `json:"recipient_name"`
+	RecipientDocument string  `json:"recipient_document"`
+	RecipientBank     string  `json:"recipient_bank"`
+	RecipientBranch   string  `json:"recipient_branch"`
+	RecipientAccount  string  `json:"recipient_account"`
+	RecipientKeyType  string  `json:"recipient_key_type"`
+	RecipientKeyValue string  `json:"recipient_key_value"`
+	TransactionID     string  `json:"transaction_id,omitempty"`
+	Status            string  `json:"status"`
+	ExecutedAt        string  `json:"executed_at"`
+	CreatedAt         string  `json:"created_at"`
 }
 
 // ============================================================
@@ -639,6 +669,7 @@ type PixTransferResponse struct {
 	Recipient     *PixRecipient `json:"recipient"`
 	Timestamp     string        `json:"timestamp"`
 	E2EID         string        `json:"e2eId"`
+	ReceiptID     string        `json:"receiptId,omitempty"`
 }
 
 // PixScheduleRequest is the body for POST /v1/pix/schedule.
@@ -689,6 +720,34 @@ type PixCreditCardResponse struct {
 	TotalWithFees    float64       `json:"totalWithFees"`
 	Recipient        *PixRecipient `json:"recipient"`
 	Timestamp        string        `json:"timestamp"`
+	ReceiptID        string        `json:"receiptId,omitempty"`
+}
+
+// PixReceiptResponse is the formatted receipt returned to the frontend.
+type PixReceiptResponse struct {
+	ID           string           `json:"id"`
+	TransferID   string           `json:"transferId"`
+	Direction    string           `json:"direction"`
+	Amount       float64          `json:"amount"`
+	Description  string           `json:"description,omitempty"`
+	E2EID        string           `json:"e2eId"`
+	FundedBy     string           `json:"fundedBy"`
+	Installments int              `json:"installments,omitempty"`
+	Sender       *PixReceiptParty `json:"sender"`
+	Recipient    *PixReceiptParty `json:"recipient"`
+	PixKey       *PixKeyInfo      `json:"pixKey,omitempty"`
+	Status       string           `json:"status"`
+	ExecutedAt   string           `json:"executedAt"`
+	CreatedAt    string           `json:"createdAt"`
+}
+
+// PixReceiptParty represents a sender or recipient in a receipt.
+type PixReceiptParty struct {
+	Name     string `json:"name"`
+	Document string `json:"document"`
+	Bank     string `json:"bank"`
+	Branch   string `json:"branch,omitempty"`
+	Account  string `json:"account,omitempty"`
 }
 
 // ============================================================
