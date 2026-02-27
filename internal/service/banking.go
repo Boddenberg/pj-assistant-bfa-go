@@ -242,6 +242,16 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 		return nil, &domain.ErrValidation{Field: "recipientKey", Message: "Não é possível transferir para você mesmo"}
 	}
 
+	// Auto-detect destination key type if not provided
+	if req.DestinationKeyType == "" {
+		detected := detectPixKeyType(req.DestinationKeyValue)
+		if detected != "" {
+			req.DestinationKeyType = detected
+		} else {
+			req.DestinationKeyType = "manual"
+		}
+	}
+
 	// Check limits
 	limit, err := s.store.GetTransactionLimit(ctx, customerID, "pix")
 	if err == nil && limit != nil {
