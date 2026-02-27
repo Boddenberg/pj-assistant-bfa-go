@@ -34,17 +34,17 @@ type CustomerProfile struct {
 
 // User represents an authenticated user (linked to Supabase Auth).
 type User struct {
-	ID             string    `json:"id"`
-	Email          string    `json:"email"`
-	Phone          string    `json:"phone,omitempty"`
-	FullName       string    `json:"full_name"`
-	CPF            string    `json:"cpf,omitempty"`
-	Role           string    `json:"role"`
-	AvatarURL      string    `json:"avatar_url,omitempty"`
-	IsActive       bool      `json:"is_active"`
-	MFAEnabled     bool      `json:"mfa_enabled"`
-	LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	Email       string     `json:"email"`
+	Phone       string     `json:"phone,omitempty"`
+	FullName    string     `json:"full_name"`
+	CPF         string     `json:"cpf,omitempty"`
+	Role        string     `json:"role"`
+	AvatarURL   string     `json:"avatar_url,omitempty"`
+	IsActive    bool       `json:"is_active"`
+	MFAEnabled  bool       `json:"mfa_enabled"`
+	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // UserCompany maps a user to a company (customer_profile) with a role.
@@ -96,11 +96,11 @@ type Transaction struct {
 
 // TransactionSummary provides aggregated transaction data.
 type TransactionSummary struct {
-	TotalCredits float64          `json:"totalCredits"`
-	TotalDebits  float64          `json:"totalDebits"`
-	Balance      float64          `json:"balance"`
-	Count        int              `json:"count"`
-	Period       *SummaryPeriod   `json:"period,omitempty"`
+	TotalCredits  float64         `json:"totalCredits"`
+	TotalDebits   float64         `json:"totalDebits"`
+	Balance       float64         `json:"balance"`
+	Count         int             `json:"count"`
+	Period        *SummaryPeriod  `json:"period,omitempty"`
 	TopCategories []CategoryTotal `json:"top_categories,omitempty"`
 }
 
@@ -125,7 +125,7 @@ type PixKey struct {
 	ID         string    `json:"id"`
 	AccountID  string    `json:"account_id"`
 	CustomerID string    `json:"customer_id"`
-	KeyType    string    `json:"key_type"`  // cpf, cnpj, email, phone, random
+	KeyType    string    `json:"key_type"` // cpf, cnpj, email, phone, random
 	KeyValue   string    `json:"key_value"`
 	Status     string    `json:"status"`
 	CreatedAt  time.Time `json:"created_at"`
@@ -133,41 +133,41 @@ type PixKey struct {
 
 // PixTransferRequest is the payload to initiate a PIX transfer.
 type PixTransferRequest struct {
-	IdempotencyKey       string  `json:"idempotency_key"`
-	SourceAccountID      string  `json:"source_account_id"`
-	DestinationKeyType   string  `json:"destination_key_type"`
-	DestinationKeyValue  string  `json:"destination_key_value"`
-	DestinationName      string  `json:"destination_name,omitempty"`
-	DestinationDocument  string  `json:"destination_document,omitempty"`
-	Amount               float64 `json:"amount"`
-	Description          string  `json:"description,omitempty"`
-	FundedBy             string  `json:"funded_by,omitempty"`  // "balance" or "credit_card"
-	CreditCardID         string  `json:"credit_card_id,omitempty"`
-	CreditCardInstallments int   `json:"credit_card_installments,omitempty"`
-	ScheduledFor         string  `json:"scheduled_for,omitempty"` // RFC3339 or empty for immediate
+	IdempotencyKey         string  `json:"idempotency_key"`
+	SourceAccountID        string  `json:"source_account_id"`
+	DestinationKeyType     string  `json:"destination_key_type"`
+	DestinationKeyValue    string  `json:"destination_key_value"`
+	DestinationName        string  `json:"destination_name,omitempty"`
+	DestinationDocument    string  `json:"destination_document,omitempty"`
+	Amount                 float64 `json:"amount"`
+	Description            string  `json:"description,omitempty"`
+	FundedBy               string  `json:"funded_by,omitempty"` // "balance" or "credit_card"
+	CreditCardID           string  `json:"credit_card_id,omitempty"`
+	CreditCardInstallments int     `json:"credit_card_installments,omitempty"`
+	ScheduledFor           string  `json:"scheduled_for,omitempty"` // RFC3339 or empty for immediate
 }
 
 // PixTransfer represents a PIX transfer record.
 type PixTransfer struct {
-	ID                   string     `json:"id"`
-	IdempotencyKey       string     `json:"idempotency_key"`
-	SourceAccountID      string     `json:"source_account_id"`
-	SourceCustomerID     string     `json:"source_customer_id"`
-	DestinationKeyType   string     `json:"destination_key_type"`
-	DestinationKeyValue  string     `json:"destination_key_value"`
-	DestinationName      string     `json:"destination_name,omitempty"`
-	DestinationDocument  string     `json:"destination_document,omitempty"`
-	Amount               float64    `json:"amount"`
-	Description          string     `json:"description,omitempty"`
-	Status               string     `json:"status"`
-	FailureReason        string     `json:"failure_reason,omitempty"`
-	EndToEndID           string     `json:"end_to_end_id,omitempty"`
-	FundedBy             string     `json:"funded_by"`
-	CreditCardID         string     `json:"credit_card_id,omitempty"`
-	CreditCardInstallments int      `json:"credit_card_installments,omitempty"`
-	ScheduledFor         *time.Time `json:"scheduled_for,omitempty"`
-	ExecutedAt           *time.Time `json:"executed_at,omitempty"`
-	CreatedAt            time.Time  `json:"created_at"`
+	ID                     string     `json:"id"`
+	IdempotencyKey         string     `json:"idempotency_key"`
+	SourceAccountID        string     `json:"source_account_id"`
+	SourceCustomerID       string     `json:"source_customer_id"`
+	DestinationKeyType     string     `json:"destination_key_type"`
+	DestinationKeyValue    string     `json:"destination_key_value"`
+	DestinationName        string     `json:"destination_name,omitempty"`
+	DestinationDocument    string     `json:"destination_document,omitempty"`
+	Amount                 float64    `json:"amount"`
+	Description            string     `json:"description,omitempty"`
+	Status                 string     `json:"status"`
+	FailureReason          string     `json:"failure_reason,omitempty"`
+	EndToEndID             string     `json:"end_to_end_id,omitempty"`
+	FundedBy               string     `json:"funded_by"`
+	CreditCardID           string     `json:"credit_card_id,omitempty"`
+	CreditCardInstallments int        `json:"credit_card_installments,omitempty"`
+	ScheduledFor           *time.Time `json:"scheduled_for,omitempty"`
+	ExecutedAt             *time.Time `json:"executed_at,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
 }
 
 // ============================================================
@@ -176,47 +176,47 @@ type PixTransfer struct {
 
 // ScheduledTransferRequest is the payload to create a scheduled transfer.
 type ScheduledTransferRequest struct {
-	IdempotencyKey       string  `json:"idempotency_key"`
-	SourceAccountID      string  `json:"source_account_id"`
-	TransferType         string  `json:"transfer_type"` // pix, ted, doc, internal
-	DestinationBankCode  string  `json:"destination_bank_code"`
-	DestinationBranch    string  `json:"destination_branch"`
-	DestinationAccount   string  `json:"destination_account"`
-	DestinationAcctType  string  `json:"destination_account_type"`
-	DestinationName      string  `json:"destination_name"`
-	DestinationDocument  string  `json:"destination_document"`
-	Amount               float64 `json:"amount"`
-	Description          string  `json:"description,omitempty"`
-	ScheduleType         string  `json:"schedule_type"`    // once, daily, weekly, biweekly, monthly
-	ScheduledDate        string  `json:"scheduled_date"`   // YYYY-MM-DD
-	RecurrenceEndDate    string  `json:"recurrence_end_date,omitempty"`
-	MaxRecurrences       *int    `json:"max_recurrences,omitempty"`
+	IdempotencyKey      string  `json:"idempotency_key"`
+	SourceAccountID     string  `json:"source_account_id"`
+	TransferType        string  `json:"transfer_type"` // pix, ted, doc, internal
+	DestinationBankCode string  `json:"destination_bank_code"`
+	DestinationBranch   string  `json:"destination_branch"`
+	DestinationAccount  string  `json:"destination_account"`
+	DestinationAcctType string  `json:"destination_account_type"`
+	DestinationName     string  `json:"destination_name"`
+	DestinationDocument string  `json:"destination_document"`
+	Amount              float64 `json:"amount"`
+	Description         string  `json:"description,omitempty"`
+	ScheduleType        string  `json:"schedule_type"`  // once, daily, weekly, biweekly, monthly
+	ScheduledDate       string  `json:"scheduled_date"` // YYYY-MM-DD
+	RecurrenceEndDate   string  `json:"recurrence_end_date,omitempty"`
+	MaxRecurrences      *int    `json:"max_recurrences,omitempty"`
 }
 
 // ScheduledTransfer represents a scheduled transfer record.
 type ScheduledTransfer struct {
-	ID                   string     `json:"id"`
-	IdempotencyKey       string     `json:"idempotency_key"`
-	SourceAccountID      string     `json:"source_account_id"`
-	SourceCustomerID     string     `json:"source_customer_id"`
-	TransferType         string     `json:"transfer_type"`
-	DestinationBankCode  string     `json:"destination_bank_code"`
-	DestinationBranch    string     `json:"destination_branch"`
-	DestinationAccount   string     `json:"destination_account"`
-	DestinationAcctType  string     `json:"destination_account_type"`
-	DestinationName      string     `json:"destination_name"`
-	DestinationDocument  string     `json:"destination_document"`
-	Amount               float64    `json:"amount"`
-	Description          string     `json:"description,omitempty"`
-	ScheduleType         string     `json:"schedule_type"`
-	ScheduledDate        string     `json:"scheduled_date"`
-	NextExecutionDate    string     `json:"next_execution_date,omitempty"`
-	RecurrenceCount      int        `json:"recurrence_count"`
-	MaxRecurrences       *int       `json:"max_recurrences,omitempty"`
-	Status               string     `json:"status"`
-	FailureReason        string     `json:"failure_reason,omitempty"`
-	LastExecutedAt       *time.Time `json:"last_executed_at,omitempty"`
-	CreatedAt            time.Time  `json:"created_at"`
+	ID                  string     `json:"id"`
+	IdempotencyKey      string     `json:"idempotency_key"`
+	SourceAccountID     string     `json:"source_account_id"`
+	SourceCustomerID    string     `json:"source_customer_id"`
+	TransferType        string     `json:"transfer_type"`
+	DestinationBankCode string     `json:"destination_bank_code"`
+	DestinationBranch   string     `json:"destination_branch"`
+	DestinationAccount  string     `json:"destination_account"`
+	DestinationAcctType string     `json:"destination_account_type"`
+	DestinationName     string     `json:"destination_name"`
+	DestinationDocument string     `json:"destination_document"`
+	Amount              float64    `json:"amount"`
+	Description         string     `json:"description,omitempty"`
+	ScheduleType        string     `json:"schedule_type"`
+	ScheduledDate       string     `json:"scheduled_date"`
+	NextExecutionDate   string     `json:"next_execution_date,omitempty"`
+	RecurrenceCount     int        `json:"recurrence_count"`
+	MaxRecurrences      *int       `json:"max_recurrences,omitempty"`
+	Status              string     `json:"status"`
+	FailureReason       string     `json:"failure_reason,omitempty"`
+	LastExecutedAt      *time.Time `json:"last_executed_at,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
 }
 
 // ============================================================
@@ -225,40 +225,40 @@ type ScheduledTransfer struct {
 
 // CreditCardRequest is the payload to request a new PJ credit card.
 type CreditCardRequest struct {
-	AccountID    string  `json:"account_id"`
-	CardBrand    string  `json:"card_brand,omitempty"` // Visa, Mastercard, Elo
-	CardType     string  `json:"card_type,omitempty"`  // corporate, virtual, additional
-	BillingDay   int     `json:"billing_day,omitempty"`
-	DueDay       int     `json:"due_day,omitempty"`
+	AccountID      string  `json:"account_id"`
+	CardBrand      string  `json:"card_brand,omitempty"` // Visa, Mastercard, Elo
+	CardType       string  `json:"card_type,omitempty"`  // corporate, virtual, additional
+	BillingDay     int     `json:"billing_day,omitempty"`
+	DueDay         int     `json:"due_day,omitempty"`
 	RequestedLimit float64 `json:"requested_limit,omitempty"`
 }
 
 // CreditCard represents a PJ credit card.
 type CreditCard struct {
-	ID                  string     `json:"id"`
-	CustomerID          string     `json:"customer_id"`
-	AccountID           string     `json:"account_id"`
-	CardNumberLast4     string     `json:"card_number_last4"`
-	CardHolderName      string     `json:"card_holder_name"`
-	CardBrand           string     `json:"card_brand"`
-	CardType            string     `json:"card_type"`
-	CreditLimit         float64    `json:"credit_limit"`
-	AvailableLimit      float64    `json:"available_limit"`
-	UsedLimit           float64    `json:"used_limit"`
-	BillingDay          int        `json:"billing_day"`
-	DueDay              int        `json:"due_day"`
-	Status              string     `json:"status"`
-	PixCreditEnabled    bool       `json:"pix_credit_enabled"`
-	PixCreditLimit      float64    `json:"pix_credit_limit"`
-	PixCreditUsed       float64    `json:"pix_credit_used"`
-	IsContactless       bool       `json:"is_contactless_enabled"`
-	IsInternational     bool       `json:"is_international_enabled"`
-	IsOnline            bool       `json:"is_online_enabled"`
-	DailyLimit          float64    `json:"daily_limit"`
-	SingleTxLimit       float64    `json:"single_transaction_limit"`
-	IssuedAt            *time.Time `json:"issued_at,omitempty"`
-	ExpiresAt           *time.Time `json:"expires_at,omitempty"`
-	CreatedAt           time.Time  `json:"created_at"`
+	ID               string     `json:"id"`
+	CustomerID       string     `json:"customer_id"`
+	AccountID        string     `json:"account_id"`
+	CardNumberLast4  string     `json:"card_number_last4"`
+	CardHolderName   string     `json:"card_holder_name"`
+	CardBrand        string     `json:"card_brand"`
+	CardType         string     `json:"card_type"`
+	CreditLimit      float64    `json:"credit_limit"`
+	AvailableLimit   float64    `json:"available_limit"`
+	UsedLimit        float64    `json:"used_limit"`
+	BillingDay       int        `json:"billing_day"`
+	DueDay           int        `json:"due_day"`
+	Status           string     `json:"status"`
+	PixCreditEnabled bool       `json:"pix_credit_enabled"`
+	PixCreditLimit   float64    `json:"pix_credit_limit"`
+	PixCreditUsed    float64    `json:"pix_credit_used"`
+	IsContactless    bool       `json:"is_contactless_enabled"`
+	IsInternational  bool       `json:"is_international_enabled"`
+	IsOnline         bool       `json:"is_online_enabled"`
+	DailyLimit       float64    `json:"daily_limit"`
+	SingleTxLimit    float64    `json:"single_transaction_limit"`
+	IssuedAt         *time.Time `json:"issued_at,omitempty"`
+	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
 }
 
 // CreditCardTransaction represents a purchase or charge on a credit card.
@@ -280,21 +280,21 @@ type CreditCardTransaction struct {
 
 // CreditCardInvoice represents a monthly credit card bill.
 type CreditCardInvoice struct {
-	ID               string    `json:"id"`
-	CardID           string    `json:"card_id"`
-	CustomerID       string    `json:"customer_id"`
-	ReferenceMonth   string    `json:"reference_month"` // "2026-02"
-	OpenDate         string    `json:"open_date"`
-	CloseDate        string    `json:"close_date"`
-	DueDate          string    `json:"due_date"`
-	TotalAmount      float64   `json:"total_amount"`
-	MinimumPayment   float64   `json:"minimum_payment"`
-	InterestAmount   float64   `json:"interest_amount"`
-	Status           string    `json:"status"`
-	PaidAmount       *float64  `json:"paid_amount,omitempty"`
-	Barcode          string    `json:"barcode,omitempty"`
-	DigitableLine    string    `json:"digitable_line,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	CardID         string    `json:"card_id"`
+	CustomerID     string    `json:"customer_id"`
+	ReferenceMonth string    `json:"reference_month"` // "2026-02"
+	OpenDate       string    `json:"open_date"`
+	CloseDate      string    `json:"close_date"`
+	DueDate        string    `json:"due_date"`
+	TotalAmount    float64   `json:"total_amount"`
+	MinimumPayment float64   `json:"minimum_payment"`
+	InterestAmount float64   `json:"interest_amount"`
+	Status         string    `json:"status"`
+	PaidAmount     *float64  `json:"paid_amount,omitempty"`
+	Barcode        string    `json:"barcode,omitempty"`
+	DigitableLine  string    `json:"digitable_line,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // ============================================================
@@ -303,24 +303,24 @@ type CreditCardInvoice struct {
 
 // BarcodeValidationRequest is sent to validate a barcode or digitable line.
 type BarcodeValidationRequest struct {
-	InputMethod   string `json:"input_method"`              // typed, pasted, camera_scan, file_upload
-	Barcode       string `json:"barcode,omitempty"`         // 44 digits
-	DigitableLine string `json:"digitable_line,omitempty"`  // 47 or 48 digits
-	ImageBase64   string `json:"image_base64,omitempty"`    // base64 image for camera_scan
+	InputMethod   string `json:"input_method"`             // typed, pasted, camera_scan, file_upload
+	Barcode       string `json:"barcode,omitempty"`        // 44 digits
+	DigitableLine string `json:"digitable_line,omitempty"` // 47 or 48 digits
+	ImageBase64   string `json:"image_base64,omitempty"`   // base64 image for camera_scan
 }
 
 // BarcodeValidationResponse contains validated barcode data.
 type BarcodeValidationResponse struct {
-	IsValid           bool    `json:"is_valid"`
-	BillType          string  `json:"bill_type"`           // bank_slip, utility, tax_slip, government
-	Barcode           string  `json:"barcode,omitempty"`
-	DigitableLine     string  `json:"digitable_line,omitempty"`
-	BankCode          string  `json:"bank_code,omitempty"`
-	Amount            float64 `json:"amount,omitempty"`
-	DueDate           string  `json:"due_date,omitempty"`
-	BeneficiaryName   string  `json:"beneficiary_name,omitempty"`
-	BeneficiaryDoc    string  `json:"beneficiary_document,omitempty"`
-	ValidationErrors  []string `json:"validation_errors,omitempty"`
+	IsValid          bool     `json:"is_valid"`
+	BillType         string   `json:"bill_type"` // bank_slip, utility, tax_slip, government
+	Barcode          string   `json:"barcode,omitempty"`
+	DigitableLine    string   `json:"digitable_line,omitempty"`
+	BankCode         string   `json:"bank_code,omitempty"`
+	Amount           float64  `json:"amount,omitempty"`
+	DueDate          string   `json:"due_date,omitempty"`
+	BeneficiaryName  string   `json:"beneficiary_name,omitempty"`
+	BeneficiaryDoc   string   `json:"beneficiary_document,omitempty"`
+	ValidationErrors []string `json:"validation_errors,omitempty"`
 }
 
 // BillPaymentRequest is the payload to pay a bill/boleto.
@@ -330,32 +330,32 @@ type BillPaymentRequest struct {
 	InputMethod    string  `json:"input_method"`
 	Barcode        string  `json:"barcode,omitempty"`
 	DigitableLine  string  `json:"digitable_line,omitempty"`
-	Amount         float64 `json:"amount,omitempty"`           // override amount (if allowed)
-	ScheduledDate  string  `json:"scheduled_date,omitempty"`   // YYYY-MM-DD, empty = today
+	Amount         float64 `json:"amount,omitempty"`         // override amount (if allowed)
+	ScheduledDate  string  `json:"scheduled_date,omitempty"` // YYYY-MM-DD, empty = today
 	Description    string  `json:"description,omitempty"`
 }
 
 // BillPayment represents a bill payment record.
 type BillPayment struct {
-	ID                string     `json:"id"`
-	IdempotencyKey    string     `json:"idempotency_key"`
-	CustomerID        string     `json:"customer_id"`
-	AccountID         string     `json:"account_id"`
-	InputMethod       string     `json:"input_method"`
-	Barcode           string     `json:"barcode,omitempty"`
-	DigitableLine     string     `json:"digitable_line,omitempty"`
-	BillType          string     `json:"bill_type"`
-	BeneficiaryName   string     `json:"beneficiary_name,omitempty"`
-	BeneficiaryDoc    string     `json:"beneficiary_document,omitempty"`
-	OriginalAmount    float64    `json:"original_amount,omitempty"`
-	FinalAmount       float64    `json:"final_amount"`
-	DueDate           string     `json:"due_date,omitempty"`
-	PaymentDate       string     `json:"payment_date,omitempty"`
-	ScheduledDate     string     `json:"scheduled_date,omitempty"`
-	Status            string     `json:"status"`
-	FailureReason     string     `json:"failure_reason,omitempty"`
-	ReceiptURL        string     `json:"receipt_url,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
+	ID              string    `json:"id"`
+	IdempotencyKey  string    `json:"idempotency_key"`
+	CustomerID      string    `json:"customer_id"`
+	AccountID       string    `json:"account_id"`
+	InputMethod     string    `json:"input_method"`
+	Barcode         string    `json:"barcode,omitempty"`
+	DigitableLine   string    `json:"digitable_line,omitempty"`
+	BillType        string    `json:"bill_type"`
+	BeneficiaryName string    `json:"beneficiary_name,omitempty"`
+	BeneficiaryDoc  string    `json:"beneficiary_document,omitempty"`
+	OriginalAmount  float64   `json:"original_amount,omitempty"`
+	FinalAmount     float64   `json:"final_amount"`
+	DueDate         string    `json:"due_date,omitempty"`
+	PaymentDate     string    `json:"payment_date,omitempty"`
+	ScheduledDate   string    `json:"scheduled_date,omitempty"`
+	Status          string    `json:"status"`
+	FailureReason   string    `json:"failure_reason,omitempty"`
+	ReceiptURL      string    `json:"receipt_url,omitempty"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // ============================================================
@@ -364,17 +364,17 @@ type BillPayment struct {
 
 // DebitPurchase represents a debit card purchase.
 type DebitPurchase struct {
-	ID               string    `json:"id"`
-	CustomerID       string    `json:"customer_id"`
-	AccountID        string    `json:"account_id"`
-	TransactionDate  time.Time `json:"transaction_date"`
-	Amount           float64   `json:"amount"`
-	MerchantName     string    `json:"merchant_name"`
-	Category         string    `json:"category"`
-	Description      string    `json:"description,omitempty"`
-	CardLast4        string    `json:"card_last4,omitempty"`
-	Status           string    `json:"status"`
-	IsContactless    bool      `json:"is_contactless"`
+	ID              string    `json:"id"`
+	CustomerID      string    `json:"customer_id"`
+	AccountID       string    `json:"account_id"`
+	TransactionDate time.Time `json:"transaction_date"`
+	Amount          float64   `json:"amount"`
+	MerchantName    string    `json:"merchant_name"`
+	Category        string    `json:"category"`
+	Description     string    `json:"description,omitempty"`
+	CardLast4       string    `json:"card_last4,omitempty"`
+	Status          string    `json:"status"`
+	IsContactless   bool      `json:"is_contactless"`
 }
 
 // ============================================================
@@ -457,14 +457,14 @@ type Favorite struct {
 
 // TransactionLimit represents configurable limits per transaction type.
 type TransactionLimit struct {
-	ID                string  `json:"id"`
-	CustomerID        string  `json:"customer_id"`
-	TransactionType   string  `json:"transaction_type"`
-	DailyLimit        float64 `json:"daily_limit"`
-	DailyUsed         float64 `json:"daily_used"`
-	MonthlyLimit      float64 `json:"monthly_limit"`
-	MonthlyUsed       float64 `json:"monthly_used"`
-	SingleLimit       float64 `json:"single_limit"`
+	ID                 string   `json:"id"`
+	CustomerID         string   `json:"customer_id"`
+	TransactionType    string   `json:"transaction_type"`
+	DailyLimit         float64  `json:"daily_limit"`
+	DailyUsed          float64  `json:"daily_used"`
+	MonthlyLimit       float64  `json:"monthly_limit"`
+	MonthlyUsed        float64  `json:"monthly_used"`
+	SingleLimit        float64  `json:"single_limit"`
 	NightlySingleLimit *float64 `json:"nightly_single_limit,omitempty"`
 	NightlyDailyLimit  *float64 `json:"nightly_daily_limit,omitempty"`
 }
@@ -540,11 +540,11 @@ type AssistantMessage struct {
 
 // MessageMetadata enriches a message with tool/RAG/token info.
 type MessageMetadata struct {
-	ToolsUsed  []string      `json:"toolsUsed,omitempty"`
-	RAGSources []RAGSource   `json:"ragSources,omitempty"`
-	TokenUsage *TokenUsage   `json:"tokenUsage,omitempty"`
-	LatencyMs  int64         `json:"latencyMs,omitempty"`
-	Reasoning  string        `json:"reasoning,omitempty"`
+	ToolsUsed  []string    `json:"toolsUsed,omitempty"`
+	RAGSources []RAGSource `json:"ragSources,omitempty"`
+	TokenUsage *TokenUsage `json:"tokenUsage,omitempty"`
+	LatencyMs  int64       `json:"latencyMs,omitempty"`
+	Reasoning  string      `json:"reasoning,omitempty"`
 }
 
 // RAGSource represents a document source used by the RAG pipeline.
@@ -654,7 +654,7 @@ type PixScheduleRequest struct {
 
 // ScheduleRecurrence specifies recurring schedule details.
 type ScheduleRecurrence struct {
-	Type    string `json:"type"`    // weekly, monthly
+	Type    string `json:"type"` // weekly, monthly
 	EndDate string `json:"endDate,omitempty"`
 }
 
@@ -712,9 +712,9 @@ type BarcodeData struct {
 
 // BarcodeValidationAPIResponse is the response for POST /v1/bills/validate.
 type BarcodeValidationAPIResponse struct {
-	Valid        bool        `json:"valid"`
+	Valid        bool         `json:"valid"`
 	Data         *BarcodeData `json:"data,omitempty"`
-	ErrorMessage string      `json:"errorMessage,omitempty"`
+	ErrorMessage string       `json:"errorMessage,omitempty"`
 }
 
 // BillPaymentAPIRequest is the body for POST /v1/bills/pay.
@@ -776,14 +776,14 @@ type CreditCardRequestResponse struct {
 
 // CreditCardInvoiceAPIResponse is returned by GET /v1/cards/{id}/invoices/{month}.
 type CreditCardInvoiceAPIResponse struct {
-	ID             string                        `json:"id"`
-	CardID         string                        `json:"cardId"`
-	ReferenceMonth string                        `json:"referenceMonth"`
-	TotalAmount    float64                       `json:"totalAmount"`
-	MinimumPayment float64                       `json:"minimumPayment"`
-	DueDate        string                        `json:"dueDate"`
-	Status         string                        `json:"status"`
-	Transactions   []InvoiceTransactionResponse  `json:"transactions"`
+	ID             string                       `json:"id"`
+	CardID         string                       `json:"cardId"`
+	ReferenceMonth string                       `json:"referenceMonth"`
+	TotalAmount    float64                      `json:"totalAmount"`
+	MinimumPayment float64                      `json:"minimumPayment"`
+	DueDate        string                       `json:"dueDate"`
+	Status         string                       `json:"status"`
+	Transactions   []InvoiceTransactionResponse `json:"transactions"`
 }
 
 // InvoiceTransactionResponse is a transaction within an invoice.
@@ -802,13 +802,13 @@ type InvoiceTransactionResponse struct {
 
 // FinancialSummary is returned by GET /v1/customers/{id}/financial/summary.
 type FinancialSummary struct {
-	CustomerID   string              `json:"customerId"`
-	Period       *FinancialPeriod    `json:"period"`
-	Balance      *BalanceSummary     `json:"balance"`
-	CashFlow     *CashFlowSummary   `json:"cashFlow"`
-	Spending     *SpendingDetail     `json:"spending"`
-	TopCategories []TopCategory      `json:"topCategories"`
-	MonthlyTrend []MonthlyTrend      `json:"monthlyTrend"`
+	CustomerID    string           `json:"customerId"`
+	Period        *FinancialPeriod `json:"period"`
+	Balance       *BalanceSummary  `json:"balance"`
+	CashFlow      *CashFlowSummary `json:"cashFlow"`
+	Spending      *SpendingDetail  `json:"spending"`
+	TopCategories []TopCategory    `json:"topCategories"`
+	MonthlyTrend  []MonthlyTrend   `json:"monthlyTrend"`
 }
 
 // FinancialPeriod is the time range for the financial summary.
@@ -891,11 +891,11 @@ type DebitPurchaseResponse struct {
 
 // ListResponse wraps paginated list results.
 type ListResponse[T any] struct {
-	Data       []T   `json:"data"`
-	Total      int   `json:"total"`
-	Page       int   `json:"page"`
-	PageSize   int   `json:"page_size"`
-	HasMore    bool  `json:"has_more"`
+	Data     []T  `json:"data"`
+	Total    int  `json:"total"`
+	Page     int  `json:"page"`
+	PageSize int  `json:"page_size"`
+	HasMore  bool `json:"has_more"`
 }
 
 // SuccessResponse wraps a successful single-entity response.
@@ -910,15 +910,15 @@ type SuccessResponse struct {
 
 // RegisterRequest is the body for POST /v1/auth/register.
 type RegisterRequest struct {
-	CNPJ                    string `json:"cnpj"`
-	RazaoSocial             string `json:"razaoSocial"`
-	NomeFantasia            string `json:"nomeFantasia"`
-	Email                   string `json:"email"`
-	RepresentanteName       string `json:"representanteName"`
-	RepresentanteCPF        string `json:"representanteCpf"`
-	RepresentantePhone      string `json:"representantePhone"`
-	RepresentanteBirthDate  string `json:"representanteBirthDate"`
-	Password                string `json:"password"`
+	CNPJ                   string `json:"cnpj"`
+	RazaoSocial            string `json:"razaoSocial"`
+	NomeFantasia           string `json:"nomeFantasia"`
+	Email                  string `json:"email"`
+	RepresentanteName      string `json:"representanteName"`
+	RepresentanteCPF       string `json:"representanteCpf"`
+	RepresentantePhone     string `json:"representantePhone"`
+	RepresentanteBirthDate string `json:"representanteBirthDate"`
+	Password               string `json:"password"`
 }
 
 // RegisterResponse is the body for 201 from POST /v1/auth/register.
