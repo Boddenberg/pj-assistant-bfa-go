@@ -456,17 +456,22 @@ func pixKeyLookupHandler(bankSvc *service.BankingService, logger *zap.Logger) ht
 			return
 		}
 
-		// Resolve the customer name for the recipient display
-		recipientName, err := bankSvc.GetCustomerName(ctx, pixKey.CustomerID)
-		if err != nil {
-			logger.Warn("could not resolve recipient name", zap.String("customer_id", pixKey.CustomerID), zap.Error(err))
+		// Resolve the customer profile + account for the recipient display
+		recipientName, recipientDoc, recipientBank, recipientBranch, recipientAcct, lookupErr := bankSvc.GetCustomerLookupData(ctx, pixKey.CustomerID)
+		if lookupErr != nil {
+			logger.Warn("could not resolve recipient data", zap.String("customer_id", pixKey.CustomerID), zap.Error(lookupErr))
 			recipientName = "Destinatário"
+			recipientBank = "Itaú Unibanco"
 		}
 
 		resp := domain.PixKeyLookupResponse{
 			KeyType: pixKey.KeyType,
 			Recipient: &domain.PixRecipient{
-				Name: recipientName,
+				Name:     recipientName,
+				Document: recipientDoc,
+				Bank:     recipientBank,
+				Branch:   recipientBranch,
+				Account:  recipientAcct,
 				PixKey: &domain.PixKeyInfo{
 					Type:  pixKey.KeyType,
 					Value: pixKey.KeyValue,
@@ -1187,6 +1192,9 @@ func listPixKeysHandler(svc *service.BankingService, logger *zap.Logger) http.Ha
 		if err != nil {
 			handleServiceError(w, err, logger)
 			return
+		}
+		if keys == nil {
+			keys = []domain.PixKey{}
 		}
 		writeJSON(w, http.StatusOK, keys)
 	}

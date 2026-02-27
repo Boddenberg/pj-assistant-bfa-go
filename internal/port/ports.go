@@ -48,6 +48,8 @@ type BankingStore interface {
 
 	// Customer name lookup (for pix recipient display)
 	GetCustomerName(ctx context.Context, customerID string) (string, error)
+	// Full customer profile + account lookup (for pix key lookup response)
+	GetCustomerLookupData(ctx context.Context, customerID string) (name, document, bank, branch, account string, err error)
 
 	// PIX Transfers
 	CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error)

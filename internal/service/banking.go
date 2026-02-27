@@ -90,6 +90,11 @@ func (s *BankingService) GetCustomerName(ctx context.Context, customerID string)
 	return s.store.GetCustomerName(ctx, customerID)
 }
 
+// GetCustomerLookupData returns full profile + account data for pix lookup responses.
+func (s *BankingService) GetCustomerLookupData(ctx context.Context, customerID string) (name, document, bank, branch, account string, err error) {
+	return s.store.GetCustomerLookupData(ctx, customerID)
+}
+
 // DeletePixKey removes a Pix key for the given customer.
 func (s *BankingService) DeletePixKey(ctx context.Context, customerID, keyID string) error {
 	ctx, span := bankTracer.Start(ctx, "BankingService.DeletePixKey")
@@ -1582,10 +1587,18 @@ func (s *BankingService) DevAddCardPurchase(ctx context.Context, req *domain.Dev
 		return nil, &domain.ErrValidation{Field: "count", Message: "máximo 50"}
 	}
 
-	// Verify card exists and is active
+	// Verify card exists; auto-activate if pending
 	card, err := s.store.GetCreditCard(ctx, req.CustomerID, req.CardID)
 	if err != nil {
 		return nil, err
+	}
+	if card.Status == "pending_activation" {
+		if activateErr := s.store.UpdateCreditCardStatus(ctx, req.CardID, "active"); activateErr != nil {
+			s.logger.Warn("DEV: failed to auto-activate card", zap.String("card_id", req.CardID), zap.Error(activateErr))
+		} else {
+			card.Status = "active"
+			s.logger.Info("DEV: auto-activated pending card", zap.String("card_id", req.CardID))
+		}
 	}
 	if card.Status != "active" {
 		return nil, &domain.ErrValidation{Field: "cardId", Message: "cartão não está ativo"}
