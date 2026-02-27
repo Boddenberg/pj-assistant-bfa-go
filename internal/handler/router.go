@@ -680,6 +680,27 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 			return
 		}
 
+		// Default installments to 1 to avoid division by zero
+		if apiReq.Installments <= 0 {
+			apiReq.Installments = 1
+		}
+		if apiReq.Installments > 12 {
+			writeError(w, http.StatusBadRequest, "installments must be between 1 and 12")
+			return
+		}
+		if apiReq.Amount <= 0 {
+			writeError(w, http.StatusBadRequest, "amount must be positive")
+			return
+		}
+		if apiReq.CreditCardID == "" {
+			writeError(w, http.StatusBadRequest, "creditCardId is required")
+			return
+		}
+		if apiReq.RecipientKey == "" {
+			writeError(w, http.StatusBadRequest, "recipientKey is required")
+			return
+		}
+
 		account, err := bankSvc.GetPrimaryAccount(ctx, apiReq.CustomerID)
 		if err != nil {
 			handleServiceError(w, err, logger)
