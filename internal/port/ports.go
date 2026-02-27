@@ -44,6 +44,10 @@ type BankingStore interface {
 	ListPixKeys(ctx context.Context, customerID string) ([]domain.PixKey, error)
 	LookupPixKey(ctx context.Context, keyType, keyValue string) (*domain.PixKey, error)
 	CreatePixKey(ctx context.Context, key *domain.PixKey) (*domain.PixKey, error)
+	DeletePixKey(ctx context.Context, customerID, keyID string) error
+
+	// Customer name lookup (for pix recipient display)
+	GetCustomerName(ctx context.Context, customerID string) (string, error)
 
 	// PIX Transfers
 	CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error)
@@ -103,6 +107,7 @@ type BankingStore interface {
 
 	// Transactions (bank statement — needed for summary)
 	GetTransactionSummary(ctx context.Context, customerID string) (*domain.TransactionSummary, error)
+	ListTransactions(ctx context.Context, customerID string, from, to string) ([]domain.Transaction, error)
 	InsertTransaction(ctx context.Context, data map[string]any) error
 
 	// Account balance update (dev tools)

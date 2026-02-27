@@ -978,6 +978,7 @@ type DevSetCreditLimitResponse struct {
 type DevGenerateTransactionsRequest struct {
 	CustomerID string `json:"customerId"`
 	Count      int    `json:"count"`
+	Months     int    `json:"months"` // how many months back to spread transactions (default 1, max 12)
 }
 
 // DevGenerateTransactionsResponse is returned by POST /v1/dev/generate-transactions.
@@ -989,11 +990,12 @@ type DevGenerateTransactionsResponse struct {
 
 // DevAddCardPurchaseRequest is the body for POST /v1/dev/add-card-purchase.
 type DevAddCardPurchaseRequest struct {
-	CustomerID string  `json:"customerId"`
-	CardID     string  `json:"cardId"`
-	Amount     float64 `json:"amount"`
-	Mode       string  `json:"mode"`  // "today" or "random"
-	Count      int     `json:"count"` // default 1
+	CustomerID  string  `json:"customerId"`
+	CardID      string  `json:"cardId"`
+	Amount      float64 `json:"amount"`
+	Mode        string  `json:"mode"`        // "today" or "random"
+	Count       int     `json:"count"`       // default 1
+	TargetMonth string  `json:"targetMonth"` // optional, format "YYYY-MM" — generates purchases in that month
 }
 
 // DevAddCardPurchaseResponse is returned by POST /v1/dev/add-card-purchase.

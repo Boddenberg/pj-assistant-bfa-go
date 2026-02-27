@@ -85,6 +85,37 @@ func (s *BankingService) LookupPixKey(ctx context.Context, keyType, keyValue str
 	return s.store.LookupPixKey(ctx, keyType, keyValue)
 }
 
+// GetCustomerName resolves a customer ID to a human-readable name.
+func (s *BankingService) GetCustomerName(ctx context.Context, customerID string) (string, error) {
+	return s.store.GetCustomerName(ctx, customerID)
+}
+
+// DeletePixKey removes a Pix key for the given customer.
+func (s *BankingService) DeletePixKey(ctx context.Context, customerID, keyID string) error {
+	ctx, span := bankTracer.Start(ctx, "BankingService.DeletePixKey")
+	defer span.End()
+
+	if customerID == "" || keyID == "" {
+		return &domain.ErrValidation{Field: "keyId", Message: "required"}
+	}
+
+	err := s.store.DeletePixKey(ctx, customerID, keyID)
+	if err != nil {
+		s.logger.Error("failed to delete pix key",
+			zap.String("customer_id", customerID),
+			zap.String("key_id", keyID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	s.logger.Info("pix key deleted",
+		zap.String("customer_id", customerID),
+		zap.String("key_id", keyID),
+	)
+	return nil
+}
+
 func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.CreatePixTransfer")
 	defer span.End()
@@ -955,30 +986,96 @@ func (s *BankingService) GetFinancialSummary(ctx context.Context, customerID, pe
 	fromDate := now.AddDate(0, 0, -periodDays).Format("2006-01-02")
 	toDate := now.Format("2006-01-02")
 
-	// Get spending summary from the store
-	spendingSummary, err := s.store.GetSpendingSummary(ctx, customerID, "monthly")
-	if err != nil {
-		s.logger.Warn("no spending summary", zap.String("customer_id", customerID), zap.Error(err))
-		spendingSummary = &domain.SpendingSummary{}
+	// Fetch actual transactions from customer_transactions
+	txns, txErr := s.store.ListTransactions(ctx, customerID, fromDate, toDate)
+	if txErr != nil {
+		s.logger.Warn("could not list transactions for financial summary", zap.Error(txErr))
+		txns = nil
+	}
+
+	// Compute income, expenses, and category breakdown from real transactions
+	var totalIncome, totalExpenses float64
+	categoryMap := make(map[string]struct {
+		Total float64
+		Count int
+	})
+
+	// Monthly breakdown for trend
+	monthlyIncome := make(map[string]float64)
+	monthlyExpenses := make(map[string]float64)
+
+	for _, tx := range txns {
+		monthKey := tx.Date.Format("2006-01")
+		if tx.Amount >= 0 {
+			totalIncome += tx.Amount
+			monthlyIncome[monthKey] += tx.Amount
+		} else {
+			totalExpenses += -tx.Amount // store as positive for display
+			monthlyExpenses[monthKey] += -tx.Amount
+		}
+		if tx.Category != "" {
+			entry := categoryMap[tx.Category]
+			entry.Total += -tx.Amount // positive value for expense categories
+			if tx.Amount < 0 {
+				entry.Count++
+			}
+			categoryMap[tx.Category] = entry
+		}
 	}
 
 	// Build top categories
 	topCategories := make([]domain.TopCategory, 0)
-	if spendingSummary.CategoryBreakdown != nil {
-		for cat, cs := range spendingSummary.CategoryBreakdown {
-			topCategories = append(topCategories, domain.TopCategory{
-				Category:         cat,
-				Amount:           cs.Total,
-				Percentage:       cs.Pct,
-				TransactionCount: cs.Count,
-				Trend:            "stable",
-			})
+	for cat, info := range categoryMap {
+		if info.Total <= 0 {
+			continue // skip income categories
+		}
+		pct := float64(0)
+		if totalExpenses > 0 {
+			pct = (info.Total / totalExpenses) * 100
+		}
+		topCategories = append(topCategories, domain.TopCategory{
+			Category:         cat,
+			Amount:           info.Total,
+			Percentage:       pct,
+			TransactionCount: info.Count,
+			Trend:            "stable",
+		})
+	}
+
+	// Build monthly trend
+	monthlyTrend := make([]domain.MonthlyTrend, 0)
+	// Collect all months
+	monthSet := make(map[string]bool)
+	for m := range monthlyIncome {
+		monthSet[m] = true
+	}
+	for m := range monthlyExpenses {
+		monthSet[m] = true
+	}
+	for m := range monthSet {
+		inc := monthlyIncome[m]
+		exp := monthlyExpenses[m]
+		monthlyTrend = append(monthlyTrend, domain.MonthlyTrend{
+			Month:    m,
+			Income:   inc,
+			Expenses: exp,
+			Balance:  inc - exp,
+		})
+	}
+
+	// Sort monthly trend by month ascending
+	for i := 0; i < len(monthlyTrend); i++ {
+		for j := i + 1; j < len(monthlyTrend); j++ {
+			if monthlyTrend[i].Month > monthlyTrend[j].Month {
+				monthlyTrend[i], monthlyTrend[j] = monthlyTrend[j], monthlyTrend[i]
+			}
 		}
 	}
 
+	netCashFlow := totalIncome - totalExpenses
 	avgDaily := float64(0)
-	if periodDays > 0 && spendingSummary.TotalExpenses > 0 {
-		avgDaily = spendingSummary.TotalExpenses / float64(periodDays)
+	if periodDays > 0 && totalExpenses > 0 {
+		avgDaily = totalExpenses / float64(periodDays)
 	}
 
 	return &domain.FinancialSummary{
@@ -995,18 +1092,18 @@ func (s *BankingService) GetFinancialSummary(ctx context.Context, customerID, pe
 			Invested:  0,
 		},
 		CashFlow: &domain.CashFlowSummary{
-			TotalIncome:              spendingSummary.TotalIncome,
-			TotalExpenses:            spendingSummary.TotalExpenses,
-			NetCashFlow:              spendingSummary.NetCashflow,
-			ComparedToPreviousPeriod: spendingSummary.IncomeVariationPct,
+			TotalIncome:              totalIncome,
+			TotalExpenses:            totalExpenses,
+			NetCashFlow:              netCashFlow,
+			ComparedToPreviousPeriod: 0,
 		},
 		Spending: &domain.SpendingDetail{
-			TotalSpent:               spendingSummary.TotalExpenses,
+			TotalSpent:               totalExpenses,
 			AverageDaily:             avgDaily,
-			ComparedToPreviousPeriod: spendingSummary.ExpenseVariationPct,
+			ComparedToPreviousPeriod: 0,
 		},
 		TopCategories: topCategories,
-		MonthlyTrend:  []domain.MonthlyTrend{},
+		MonthlyTrend:  monthlyTrend,
 	}, nil
 }
 
@@ -1148,6 +1245,44 @@ func (s *BankingService) PayInvoice(ctx context.Context, customerID, cardID stri
 		return nil, err
 	}
 
+	// Restore card available limit by the paid amount
+	card, cardErr := s.store.GetCreditCard(ctx, customerID, cardID)
+	if cardErr == nil {
+		newUsed := card.UsedLimit - payAmount
+		if newUsed < 0 {
+			newUsed = 0
+		}
+		newAvailable := card.CreditLimit - newUsed
+		if newAvailable > card.CreditLimit {
+			newAvailable = card.CreditLimit
+		}
+		if limitErr := s.store.UpdateCreditCardUsedLimit(ctx, cardID, newUsed, newAvailable); limitErr != nil {
+			s.logger.Warn("failed to restore card limit after invoice payment",
+				zap.String("card_id", cardID),
+				zap.Error(limitErr),
+			)
+		}
+	}
+
+	// Record the payment as a transaction in the statement
+	now := time.Now()
+	cardLast4 := cardID[:4]
+	if card != nil && card.CardNumberLast4 != "" {
+		cardLast4 = card.CardNumberLast4
+	}
+	tx := map[string]any{
+		"id":          uuid.New().String(),
+		"customer_id": customerID,
+		"date":        now.Format(time.RFC3339),
+		"description": fmt.Sprintf("Pagamento fatura cartão •••• %s", cardLast4),
+		"amount":      -payAmount,
+		"type":        "invoice_payment",
+		"category":    "cartao",
+	}
+	if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
+		s.logger.Warn("failed to record invoice payment transaction", zap.Error(txErr))
+	}
+
 	s.logger.Info("invoice paid",
 		zap.String("customer_id", customerID),
 		zap.String("card_id", cardID),
@@ -1277,6 +1412,16 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		return nil, &domain.ErrValidation{Field: "count", Message: "deve ser entre 1 e 100"}
 	}
 
+	// Default months = 1, max 12
+	months := req.Months
+	if months <= 0 {
+		months = 1
+	}
+	if months > 12 {
+		months = 12
+	}
+	daysSpan := months * 30 // approximate days to spread transactions across
+
 	txTypes := []struct {
 		Type     string
 		IsDebit  bool
@@ -1299,7 +1444,7 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		txInfo := txTypes[rand.Intn(len(txTypes))]
 		desc := txInfo.Descs[rand.Intn(len(txInfo.Descs))]
 		amount := float64(rand.Intn(490000)+1000) / 100.0 // R$ 10.00 to R$ 5000.00
-		daysAgo := rand.Intn(30)
+		daysAgo := rand.Intn(daysSpan)
 		txDate := now.AddDate(0, 0, -daysAgo)
 
 		if txInfo.IsDebit {
@@ -1398,39 +1543,54 @@ func (s *BankingService) DevAddCardPurchase(ctx context.Context, req *domain.Dev
 	generated := 0
 	var totalAmount float64
 
+	// Determine target month boundaries
+	var monthStart, monthEnd time.Time
+	if req.TargetMonth != "" {
+		// Parse "YYYY-MM"
+		parsed, parseErr := time.Parse("2006-01", req.TargetMonth)
+		if parseErr != nil {
+			return nil, &domain.ErrValidation{Field: "targetMonth", Message: "formato deve ser YYYY-MM"}
+		}
+		monthStart = parsed
+		monthEnd = parsed.AddDate(0, 1, 0).Add(-time.Second) // last second of that month
+	} else {
+		// Default: current month
+		monthStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		monthEnd = now
+	}
+
 	for i := 0; i < req.Count; i++ {
 		m := merchants[rand.Intn(len(merchants))]
 
 		var txDate time.Time
-		if req.Mode == "today" {
+		if req.Mode == "today" && req.TargetMonth == "" {
 			txDate = now
 		} else {
-			// Random date between day 1 of current month and today
-			firstOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-			dayRange := int(now.Sub(firstOfMonth).Hours()/24) + 1
+			// Random date within the target month range
+			dayRange := int(monthEnd.Sub(monthStart).Hours()/24) + 1
 			if dayRange < 1 {
 				dayRange = 1
 			}
 			randomDay := rand.Intn(dayRange)
-			txDate = firstOfMonth.AddDate(0, 0, randomDay)
+			txDate = monthStart.AddDate(0, 0, randomDay)
 			// Add random hour
 			txDate = txDate.Add(time.Duration(rand.Intn(14)+8) * time.Hour)
 			txDate = txDate.Add(time.Duration(rand.Intn(60)) * time.Minute)
 		}
 
 		tx := map[string]any{
-			"id":               uuid.New().String(),
-			"card_id":          req.CardID,
-			"customer_id":      req.CustomerID,
-			"transaction_date": txDate.Format(time.RFC3339),
-			"amount":           req.Amount,
-			"merchant_name":    m.Name,
-			"category":         m.Category,
-			"description":      fmt.Sprintf("Compra - %s", m.Name),
-			"installments":     1,
+			"id":                  uuid.New().String(),
+			"card_id":             req.CardID,
+			"customer_id":         req.CustomerID,
+			"transaction_date":    txDate.Format(time.RFC3339),
+			"amount":              req.Amount,
+			"merchant_name":       m.Name,
+			"category":            m.Category,
+			"description":         fmt.Sprintf("Compra - %s", m.Name),
+			"installments":        1,
 			"current_installment": 1,
-			"transaction_type": "purchase",
-			"status":           "confirmed",
+			"transaction_type":    "purchase",
+			"status":              "confirmed",
 		}
 
 		if txErr := s.store.InsertCreditCardTransaction(ctx, tx); txErr != nil {

@@ -109,6 +109,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Get("/customers/{customerId}/accounts/{accountId}", getAccountHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/accounts/{accountId}/balance", getBalanceHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/pix/keys", listPixKeysHandler(bankSvc, logger))
+		r.Delete("/customers/{customerId}/pix/keys/{keyId}", deletePixKeyHandler(bankSvc, logger))
 
 		// Favorites
 		r.Get("/customers/{customerId}/favorites", listFavoritesHandler(bankSvc, logger))
@@ -376,10 +377,17 @@ func pixKeyLookupHandler(bankSvc *service.BankingService, logger *zap.Logger) ht
 			return
 		}
 
+		// Resolve the customer name for the recipient display
+		recipientName, err := bankSvc.GetCustomerName(ctx, pixKey.CustomerID)
+		if err != nil {
+			logger.Warn("could not resolve recipient name", zap.String("customer_id", pixKey.CustomerID), zap.Error(err))
+			recipientName = "Destinatário"
+		}
+
 		resp := domain.PixKeyLookupResponse{
 			KeyType: pixKey.KeyType,
 			Recipient: &domain.PixRecipient{
-				Name: pixKey.CustomerID,
+				Name: recipientName,
 				PixKey: &domain.PixKeyInfo{
 					Type:  pixKey.KeyType,
 					Value: pixKey.KeyValue,
@@ -1045,6 +1053,20 @@ func listPixKeysHandler(svc *service.BankingService, logger *zap.Logger) http.Ha
 			return
 		}
 		writeJSON(w, http.StatusOK, keys)
+	}
+}
+
+func deletePixKeyHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "DELETE /pix/keys/{keyId}")
+		defer span.End()
+		customerID := chi.URLParam(r, "customerId")
+		keyID := chi.URLParam(r, "keyId")
+		if err := svc.DeletePixKey(ctx, customerID, keyID); err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "Chave Pix excluída com sucesso"})
 	}
 }
 

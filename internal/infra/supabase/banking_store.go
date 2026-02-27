@@ -681,6 +681,25 @@ func (c *Client) InsertTransaction(ctx context.Context, data map[string]any) err
 	return err
 }
 
+// ListTransactions returns transactions for a customer within a date range.
+func (c *Client) ListTransactions(ctx context.Context, customerID string, from, to string) ([]domain.Transaction, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.ListTransactions")
+	defer span.End()
+
+	path := fmt.Sprintf("customer_transactions?customer_id=eq.%s&date=gte.%s&date=lte.%s&order=date.desc&limit=1000",
+		customerID, from, to)
+	body, err := c.doRequest(ctx, http.MethodGet, path)
+	if err != nil {
+		return nil, err
+	}
+
+	var txns []domain.Transaction
+	if err := json.Unmarshal(body, &txns); err != nil {
+		return nil, fmt.Errorf("decode transactions: %w", err)
+	}
+	return txns, nil
+}
+
 // --- Spending Analytics ---
 
 func (c *Client) GetSpendingSummary(ctx context.Context, customerID, periodType string) (*domain.SpendingSummary, error) {
@@ -949,6 +968,46 @@ func (c *Client) CreatePixKey(ctx context.Context, key *domain.PixKey) (*domain.
 		return key, nil
 	}
 	return &rows[0], nil
+}
+
+func (c *Client) DeletePixKey(ctx context.Context, customerID, keyID string) error {
+	ctx, span := tracer.Start(ctx, "Supabase.DeletePixKey")
+	defer span.End()
+
+	path := fmt.Sprintf("pix_keys?id=eq.%s&customer_id=eq.%s", keyID, customerID)
+	if err := c.doDelete(ctx, path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Client) GetCustomerName(ctx context.Context, customerID string) (string, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.GetCustomerName")
+	defer span.End()
+
+	path := fmt.Sprintf("customer_profiles?customer_id=eq.%s&select=company_name,name&limit=1", customerID)
+	body, err := c.doRequest(ctx, http.MethodGet, path)
+	if err != nil {
+		return "", err
+	}
+
+	var rows []struct {
+		CompanyName string `json:"company_name"`
+		Name        string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return "", fmt.Errorf("decode customer_profiles: %w", err)
+	}
+	if len(rows) == 0 {
+		return "Destinatário", nil
+	}
+	if rows[0].CompanyName != "" {
+		return rows[0].CompanyName, nil
+	}
+	if rows[0].Name != "" {
+		return rows[0].Name, nil
+	}
+	return "Destinatário", nil
 }
 
 // --- Account Balance Update (dev tools) ---
