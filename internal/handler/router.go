@@ -51,6 +51,12 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Post("/assistant/{customerId}", assistantHandler(svc, logger))
 
 		// =============================================
+		// 1b. 💬 Chat (alias for assistant)
+		// POST /v1/chat
+		// =============================================
+		r.Post("/chat", chatHandler(svc, logger))
+
+		// =============================================
 		// 2. 👤 Cliente
 		// GET /v1/customers/{customerId}/profile
 		// =============================================
@@ -74,11 +80,14 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// 5. ⚡ Pix
 		// =============================================
 		r.Get("/pix/keys/lookup", pixKeyLookupHandler(bankSvc, logger))
+		r.Get("/pix/lookup", pixKeyLookupHandler(bankSvc, logger))
 		r.Post("/pix/transfer", pixTransferHandler(bankSvc, logger))
 		r.Post("/pix/schedule", pixScheduleHandler(bankSvc, logger))
 		r.Delete("/pix/schedule/{scheduleId}", pixScheduleDeleteHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/pix/scheduled", pixScheduledListHandler(bankSvc, logger))
+		r.Get("/pix/scheduled/{customerId}", pixScheduledListByParamHandler(bankSvc, logger))
 		r.Post("/pix/credit-card", pixCreditCardHandler(bankSvc, logger))
+		r.Post("/pix/credit", pixCreditCardHandler(bankSvc, logger))
 		r.Delete("/pix/keys", pixKeyDeleteByValueHandler(bankSvc, logger))
 
 		// =============================================
@@ -92,11 +101,16 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// 7. 💳 Cartão de Crédito
 		// =============================================
 		r.Get("/customers/{customerId}/cards", listCardsHandler(bankSvc, logger))
+		r.Get("/customers/{customerId}/credit-cards", listCardsHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/credit-limit", creditLimitHandler(bankSvc, logger))
 		r.Post("/cards/request", cardRequestHandler(bankSvc, logger))
+		r.Post("/customers/{customerId}/credit-cards/request", cardRequestHandler(bankSvc, logger))
 		r.Get("/cards/{cardId}/invoices/{month}", cardInvoiceByMonthHandler(bankSvc, logger))
 		r.Post("/cards/{cardId}/block", cardBlockHandler(bankSvc, logger))
 		r.Post("/cards/{cardId}/unblock", cardUnblockHandler(bankSvc, logger))
+		r.Post("/customers/{customerId}/credit-cards/{cardId}/block", cardBlockHandler(bankSvc, logger))
+		r.Post("/customers/{customerId}/credit-cards/{cardId}/unblock", cardUnblockHandler(bankSvc, logger))
+		r.Get("/customers/{customerId}/credit-cards/{cardId}/invoice", cardInvoiceCurrentHandler(bankSvc, logger))
 
 		// =============================================
 		// 8. 📈 Análise Financeira & Débito
@@ -249,6 +263,66 @@ func assistantHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFu
 	}
 }
 
+// chatHandler is an alias for the assistant endpoint that accepts customerId in the body.
+// Matches the document spec: POST /v1/chat with { customerId, message, conversationId }
+func chatHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "POST /v1/chat")
+		defer span.End()
+
+		var req struct {
+			CustomerID     string `json:"customerId"`
+			Message        string `json:"message"`
+			ConversationID string `json:"conversationId,omitempty"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if req.CustomerID == "" {
+			writeError(w, http.StatusBadRequest, "customerId is required")
+			return
+		}
+		span.SetAttributes(attribute.String("customer.id", req.CustomerID))
+
+		start := time.Now()
+		result, err := svc.GetAssistantResponse(ctx, req.CustomerID, req.Message)
+		latencyMs := time.Since(start).Milliseconds()
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		convID := req.ConversationID
+		if convID == "" {
+			convID = uuid.New().String()
+		}
+
+		resp := domain.AssistantResponse{
+			ConversationID: convID,
+			Message: &domain.AssistantMessage{
+				ID:        uuid.New().String(),
+				Role:      "assistant",
+				Content:   result.Recommendation.Answer,
+				Timestamp: time.Now().Format(time.RFC3339),
+				Metadata: &domain.MessageMetadata{
+					ToolsUsed: result.Recommendation.ToolsExecuted,
+					TokenUsage: &domain.TokenUsage{
+						PromptTokens:     result.Recommendation.TokensUsed.PromptTokens,
+						CompletionTokens: result.Recommendation.TokensUsed.CompletionTokens,
+						TotalTokens:      result.Recommendation.TokensUsed.TotalTokens,
+					},
+					LatencyMs: latencyMs,
+					Reasoning: result.Recommendation.Reasoning,
+				},
+			},
+			Profile: result.Profile,
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
 // ============================================================
 // 2. Cliente — GET /v1/customers/{customerId}/profile
 // ============================================================
@@ -290,7 +364,7 @@ func getTransactionsHandler(svc *service.Assistant, logger *zap.Logger) http.Han
 			}
 		}
 
-		writeJSON(w, http.StatusOK, transactions)
+		writeJSON(w, http.StatusOK, map[string]any{"transactions": transactions})
 	}
 }
 
@@ -372,6 +446,9 @@ func pixKeyLookupHandler(bankSvc *service.BankingService, logger *zap.Logger) ht
 
 		keyValue := r.URL.Query().Get("key")
 		keyType := r.URL.Query().Get("keyType")
+		if keyType == "" {
+			keyType = r.URL.Query().Get("type") // alias: ?type=email
+		}
 
 		pixKey, err := bankSvc.LookupPixKey(ctx, keyType, keyValue)
 		if err != nil {
@@ -564,8 +641,14 @@ func pixScheduledListHandler(bankSvc *service.BankingService, logger *zap.Logger
 			resp = append(resp, item)
 		}
 
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, map[string]any{"schedules": resp})
 	}
+}
+
+// pixScheduledListByParamHandler is an alias for pixScheduledListHandler
+// using the URL pattern GET /v1/pix/scheduled/{customerId}
+func pixScheduledListByParamHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return pixScheduledListHandler(bankSvc, logger)
 }
 
 func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
@@ -798,7 +881,7 @@ func listCardsHandler(bankSvc *service.BankingService, logger *zap.Logger) http.
 			})
 		}
 
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusOK, map[string]any{"cards": resp})
 	}
 }
 
@@ -886,6 +969,57 @@ func cardInvoiceByMonthHandler(bankSvc *service.BankingService, logger *zap.Logg
 		}
 
 		txns, _ := bankSvc.ListCardTransactions(ctx, invoice.CustomerID, cardID, 1, 100)
+
+		txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
+		for _, t := range txns {
+			installmentStr := ""
+			if t.Installments > 1 {
+				installmentStr = fmt.Sprintf("%d/%d", t.CurrentInstallment, t.Installments)
+			}
+			txnResp = append(txnResp, domain.InvoiceTransactionResponse{
+				ID:          t.ID,
+				Date:        t.TransactionDate.Format(time.RFC3339),
+				Description: t.MerchantName,
+				Amount:      t.Amount,
+				Installment: installmentStr,
+				Category:    t.Category,
+			})
+		}
+
+		resp := domain.CreditCardInvoiceAPIResponse{
+			ID:             invoice.ID,
+			CardID:         invoice.CardID,
+			ReferenceMonth: invoice.ReferenceMonth,
+			TotalAmount:    invoice.TotalAmount,
+			MinimumPayment: invoice.MinimumPayment,
+			DueDate:        invoice.DueDate,
+			Status:         invoice.Status,
+			Transactions:   txnResp,
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// cardInvoiceCurrentHandler returns the current/latest invoice for a card.
+// Matches: GET /v1/customers/{customerId}/credit-cards/{cardId}/invoice
+func cardInvoiceCurrentHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "GET /v1/customers/{customerId}/credit-cards/{cardId}/invoice")
+		defer span.End()
+
+		customerID := chi.URLParam(r, "customerId")
+		cardID := chi.URLParam(r, "cardId")
+
+		// Use current month
+		currentMonth := time.Now().Format("2006-01")
+		invoice, err := bankSvc.GetCardInvoiceByMonth(ctx, customerID, cardID, currentMonth)
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		txns, _ := bankSvc.ListCardTransactions(ctx, customerID, cardID, 1, 100)
 
 		txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
 		for _, t := range txns {
@@ -1369,7 +1503,7 @@ func authLogoutHandler(authSvc *service.AuthService, logger *zap.Logger) http.Ha
 			return
 		}
 
-		writeJSON(w, http.StatusOK, domain.SuccessResponse{Message: "Logout realizado com sucesso"})
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

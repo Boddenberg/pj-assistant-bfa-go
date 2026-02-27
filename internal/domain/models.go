@@ -88,7 +88,7 @@ type Transaction struct {
 	ID           string    `json:"id"`
 	Date         time.Time `json:"date"`
 	Amount       float64   `json:"amount"`
-	Type         string    `json:"type"` // pix_sent, pix_received, debit_purchase, credit_purchase, transfer_in, transfer_out, bill_payment, invoice_payment, adjustment
+	Type         string    `json:"type"` // pix_sent, pix_received, debit_purchase, credit_purchase, transfer_in, transfer_out, bill_payment, credit, debit
 	Category     string    `json:"category"`
 	Description  string    `json:"description"`
 	Counterparty string    `json:"counterparty,omitempty"`
@@ -964,8 +964,8 @@ type DevAddBalanceResponse struct {
 
 // DevSetCreditLimitRequest is the body for POST /v1/dev/set-credit-limit.
 type DevSetCreditLimitRequest struct {
-	CustomerID string  `json:"customerId"`
-	Limit      float64 `json:"limit"`
+	CustomerID  string  `json:"customerId"`
+	CreditLimit float64 `json:"creditLimit"`
 }
 
 // DevSetCreditLimitResponse is returned by POST /v1/dev/set-credit-limit.

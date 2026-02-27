@@ -654,10 +654,10 @@ func (c *Client) GetTransactionSummary(ctx context.Context, customerID string) (
 
 	summary := &domain.TransactionSummary{Count: len(txns)}
 	for _, t := range txns {
-		if t.Type == "credit" {
+		if t.Amount >= 0 {
 			summary.TotalCredits += t.Amount
 		} else {
-			summary.TotalDebits += t.Amount
+			summary.TotalDebits += -t.Amount // store as positive
 		}
 	}
 	summary.Balance = summary.TotalCredits - summary.TotalDebits

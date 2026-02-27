@@ -1019,16 +1019,22 @@ func (s *BankingService) GetFinancialSummary(ctx context.Context, customerID, pe
 	now := time.Now()
 	periodLabel := "Últimos 30 dias"
 	periodDays := 30
-	switch {
-	case period == "90d":
-		periodLabel = "Últimos 90 dias"
-		periodDays = 90
-	case period == "12m":
-		periodLabel = "Últimos 12 meses"
-		periodDays = 365
-	case period == "7d":
+	switch period {
+	case "7d":
 		periodLabel = "Últimos 7 dias"
 		periodDays = 7
+	case "90d", "3months":
+		periodLabel = "Últimos 3 meses"
+		periodDays = 90
+	case "6months":
+		periodLabel = "Últimos 6 meses"
+		periodDays = 180
+	case "12m", "1year":
+		periodLabel = "Últimos 12 meses"
+		periodDays = 365
+	case "1month", "30d":
+		periodLabel = "Últimos 30 dias"
+		periodDays = 30
 	}
 	fromDate := now.AddDate(0, 0, -periodDays).Format("2006-01-02")
 	toDate := now.Format("2006-01-02")
@@ -1155,11 +1161,23 @@ func (s *BankingService) GetFinancialSummary(ctx context.Context, customerID, pe
 }
 
 // GetTransactionSummary computes an aggregated summary of customer transactions.
+// Balance reflects the real account balance, not just sum of transactions.
 func (s *BankingService) GetTransactionSummary(ctx context.Context, customerID string) (*domain.TransactionSummary, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.GetTransactionSummary")
 	defer span.End()
 
-	return s.store.GetTransactionSummary(ctx, customerID)
+	summary, err := s.store.GetTransactionSummary(ctx, customerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Override balance with real account balance
+	account, acctErr := s.store.GetPrimaryAccount(ctx, customerID)
+	if acctErr == nil && account != nil {
+		summary.Balance = account.Balance
+	}
+
+	return summary, nil
 }
 
 // ============================================================
@@ -1324,7 +1342,7 @@ func (s *BankingService) PayInvoice(ctx context.Context, customerID, cardID stri
 		"date":        now.Format(time.RFC3339),
 		"description": fmt.Sprintf("Pagamento fatura cartão •••• %s", cardLast4),
 		"amount":      -payAmount,
-		"type":        "invoice_payment",
+		"type":        "bill_payment",
 		"category":    "cartao",
 	}
 	if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
@@ -1409,11 +1427,11 @@ func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevS
 	if req.CustomerID == "" {
 		return nil, &domain.ErrValidation{Field: "customerId", Message: "required"}
 	}
-	if req.Limit <= 0 {
-		return nil, &domain.ErrValidation{Field: "limit", Message: "deve ser positivo"}
+	if req.CreditLimit <= 0 {
+		return nil, &domain.ErrValidation{Field: "creditLimit", Message: "deve ser positivo"}
 	}
 
-	err := s.store.UpdateCreditCardLimit(ctx, req.CustomerID, req.Limit)
+	err := s.store.UpdateCreditCardLimit(ctx, req.CustomerID, req.CreditLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -1424,9 +1442,9 @@ func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevS
 		"id":          uuid.New().String(),
 		"customer_id": req.CustomerID,
 		"date":        now.Format(time.RFC3339),
-		"description": fmt.Sprintf("DevTools — Limite de crédito ajustado para R$ %.2f", req.Limit),
+		"description": fmt.Sprintf("DevTools — Limite de crédito ajustado para R$ %.2f", req.CreditLimit),
 		"amount":      0,
-		"type":        "adjustment",
+		"type":        "credit",
 		"category":    "devtools",
 	}
 	if txErr := s.store.InsertTransaction(ctx, tx); txErr != nil {
@@ -1438,13 +1456,13 @@ func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevS
 
 	s.logger.Info("DEV: credit limit updated",
 		zap.String("customer_id", req.CustomerID),
-		zap.Float64("new_limit", req.Limit),
+		zap.Float64("new_limit", req.CreditLimit),
 	)
 
 	return &domain.DevSetCreditLimitResponse{
 		Success:  true,
-		NewLimit: req.Limit,
-		Message:  fmt.Sprintf("Limite de crédito atualizado para R$ %.2f", req.Limit),
+		NewLimit: req.CreditLimit,
+		Message:  fmt.Sprintf("Limite de crédito atualizado para R$ %.2f", req.CreditLimit),
 	}, nil
 }
 
@@ -1490,8 +1508,8 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		{"transfer_in", false, []string{"TED recebida - Fornecedor A", "DOC recebido - Partner B", "Transferência recebida - Cliente"}, "recebimento"},
 		{"transfer_out", true, []string{"TED enviada - Aluguel", "TED enviada - Fornecedor", "Transferência - Pagamento"}, "despesas"},
 		{"bill_payment", true, []string{"Conta de luz", "Conta de telefone", "Internet Fibra", "IPTU"}, "contas"},
-		{"invoice_payment", true, []string{"Pagamento fatura cartão", "Fatura cartão corporativo"}, "cartao"},
-		{"adjustment", false, []string{"Estorno - Compra duplicada", "Ajuste de saldo", "Correção bancária"}, "ajuste"},
+		{"credit", false, []string{"Crédito recebido", "Estorno - Compra duplicada", "Bonificação empresarial"}, "credito"},
+		{"debit", true, []string{"Débito automático", "Tarifa bancária", "Cobrança serviço"}, "debito"},
 	}
 
 	generated := 0
