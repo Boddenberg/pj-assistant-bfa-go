@@ -253,3 +253,22 @@ func (c *Client) UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, s
 		"status": status,
 	})
 }
+
+func (c *Client) CreateCreditCardInvoice(ctx context.Context, invoice map[string]any) (*domain.CreditCardInvoice, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.CreateCreditCardInvoice")
+	defer span.End()
+
+	body, err := c.doPost(ctx, "credit_card_invoices", invoice)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []domain.CreditCardInvoice
+	if err := json.Unmarshal(body, &results); err != nil {
+		return nil, fmt.Errorf("decode cc_invoice: %w", err)
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no result from credit_card_invoices insert")
+	}
+	return &results[0], nil
+}

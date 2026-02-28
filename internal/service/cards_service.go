@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -194,7 +195,104 @@ func (s *BankingService) GetCardInvoiceByMonth(ctx context.Context, customerID, 
 	ctx, span := bankTracer.Start(ctx, "BankingService.GetCardInvoiceByMonth")
 	defer span.End()
 
-	return s.store.GetCreditCardInvoiceByMonth(ctx, customerID, cardID, month)
+	invoice, err := s.store.GetCreditCardInvoiceByMonth(ctx, customerID, cardID, month)
+	if err == nil {
+		return invoice, nil
+	}
+
+	// If invoice not found, auto-generate it from credit_card_transactions
+	var notFound *domain.ErrNotFound
+	if !errors.As(err, &notFound) {
+		return nil, err
+	}
+
+	// Resolve customerID if not provided (used by cardInvoiceByMonthHandler)
+	if customerID == "" {
+		card, cardErr := s.store.GetCreditCard(ctx, "", cardID)
+		if cardErr != nil {
+			return nil, cardErr
+		}
+		customerID = card.CustomerID
+	}
+
+	// Fetch all transactions for this card (large page to capture all)
+	txns, txErr := s.store.ListCreditCardTransactions(ctx, customerID, cardID, 1, 500)
+	if txErr != nil {
+		return nil, txErr
+	}
+
+	// Filter transactions that belong to this reference month
+	var totalAmount float64
+	for _, t := range txns {
+		txMonth := t.TransactionDate.Format("2006-01")
+		if txMonth == month {
+			totalAmount += t.Amount
+		}
+	}
+
+	// Get card details to determine billing/due days
+	card, cardErr := s.store.GetCreditCard(ctx, customerID, cardID)
+	if cardErr != nil {
+		return nil, cardErr
+	}
+
+	billingDay := card.BillingDay
+	if billingDay == 0 {
+		billingDay = 10
+	}
+	dueDay := card.DueDay
+	if dueDay == 0 {
+		dueDay = 20
+	}
+
+	// Parse the month to build dates
+	refTime, parseErr := time.Parse("2006-01", month)
+	if parseErr != nil {
+		return nil, fmt.Errorf("invalid month format: %w", parseErr)
+	}
+
+	year, mon := refTime.Year(), refTime.Month()
+	openDate := time.Date(year, mon, 1, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	closeDate := time.Date(year, mon, billingDay, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+	dueDate := time.Date(year, mon, dueDay, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+
+	minPayment := totalAmount * 0.15
+
+	invoiceData := map[string]any{
+		"id":              uuid.New().String(),
+		"card_id":         cardID,
+		"customer_id":     customerID,
+		"reference_month": month,
+		"open_date":       openDate,
+		"close_date":      closeDate,
+		"due_date":        dueDate,
+		"total_amount":    totalAmount,
+		"minimum_payment": minPayment,
+		"interest_amount": 0,
+		"status":          "open",
+		"barcode":         "",
+		"digitable_line":  "",
+	}
+
+	newInvoice, createErr := s.store.CreateCreditCardInvoice(ctx, invoiceData)
+	if createErr != nil {
+		s.logger.Error("failed to auto-create invoice",
+			zap.String("customer_id", customerID),
+			zap.String("card_id", cardID),
+			zap.String("month", month),
+			zap.Error(createErr),
+		)
+		return nil, createErr
+	}
+
+	s.logger.Info("auto-created invoice for month",
+		zap.String("customer_id", customerID),
+		zap.String("card_id", cardID),
+		zap.String("month", month),
+		zap.Float64("total_amount", totalAmount),
+	)
+
+	return newInvoice, nil
 }
 
 // ============================================================
