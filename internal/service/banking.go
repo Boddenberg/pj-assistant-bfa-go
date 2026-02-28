@@ -1380,7 +1380,7 @@ func (s *BankingService) GetFinancialSummary(ctx context.Context, customerID, pe
 		periodDays = 30
 	}
 	fromDate := now.AddDate(0, 0, -periodDays).Format("2006-01-02")
-	toDate := now.Format("2006-01-02")
+	toDate := now.AddDate(0, 0, 1).Format("2006-01-02") // next day so we include all of today
 
 	// Fetch actual transactions from customer_transactions
 	txns, txErr := s.store.ListTransactions(ctx, customerID, fromDate, toDate)

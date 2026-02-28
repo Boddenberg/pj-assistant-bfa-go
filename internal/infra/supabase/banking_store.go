@@ -848,7 +848,7 @@ func (c *Client) ListTransactions(ctx context.Context, customerID string, from, 
 	ctx, span := tracer.Start(ctx, "Supabase.ListTransactions")
 	defer span.End()
 
-	path := fmt.Sprintf("customer_transactions?customer_id=eq.%s&date=gte.%s&date=lte.%s&order=date.desc&limit=1000",
+	path := fmt.Sprintf("customer_transactions?customer_id=eq.%s&date=gte.%s&date=lt.%s&order=date.desc&limit=1000",
 		customerID, from, to)
 	body, err := c.doRequest(ctx, http.MethodGet, path)
 	if err != nil {
