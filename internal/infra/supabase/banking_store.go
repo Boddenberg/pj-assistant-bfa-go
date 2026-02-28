@@ -795,14 +795,34 @@ func (c *Client) GetTransactionSummary(ctx context.Context, customerID string) (
 	}
 
 	summary := &domain.TransactionSummary{Count: len(txns)}
+	categoryTotals := make(map[string]float64)
 	for _, t := range txns {
 		if t.Amount >= 0 {
 			summary.TotalCredits += t.Amount
 		} else {
 			summary.TotalDebits += -t.Amount // store as positive
+			// Accumulate expense by category
+			if t.Category != "" {
+				categoryTotals[t.Category] += -t.Amount
+			}
 		}
 	}
 	summary.Balance = summary.TotalCredits - summary.TotalDebits
+
+	// Build top categories from expense breakdown
+	topCats := make([]domain.CategoryTotal, 0, len(categoryTotals))
+	for cat, total := range categoryTotals {
+		topCats = append(topCats, domain.CategoryTotal{Category: cat, Total: total})
+	}
+	// Sort by total descending
+	for i := 0; i < len(topCats); i++ {
+		for j := i + 1; j < len(topCats); j++ {
+			if topCats[i].Total < topCats[j].Total {
+				topCats[i], topCats[j] = topCats[j], topCats[i]
+			}
+		}
+	}
+	summary.TopCategories = topCats
 
 	if len(txns) > 0 {
 		summary.Period = &domain.SummaryPeriod{
