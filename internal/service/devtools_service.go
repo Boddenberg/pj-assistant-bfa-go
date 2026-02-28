@@ -170,21 +170,23 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 	}
 	daysSpan := months * 30 // approximate days to spread transactions across
 
-	txTypes := []struct {
-		Type     string
-		IsDebit  bool
-		Descs    []string
-		Category string
-	}{
-		{"pix_sent", true, []string{"Pix enviado - Maria Silva", "Pix enviado - João LTDA", "Pix enviado - Ana Costa"}, "pix"},
-		{"pix_received", false, []string{"Pix recebido - Tech Corp", "Pix recebido - Vendas Online", "Pix recebido - Cliente ABC"}, "recebimento"},
-		{"debit_purchase", true, []string{"Supermercado Extra", "Posto Shell", "Farmácia São Paulo", "Restaurante Sabor"}, "compras"},
-		{"credit_purchase", true, []string{"Amazon AWS", "Google Cloud", "Material Escritório", "Uber Business"}, "tecnologia"},
-		{"transfer_in", false, []string{"TED recebida - Fornecedor A", "DOC recebido - Partner B", "Transferência recebida - Cliente"}, "recebimento"},
-		{"transfer_out", true, []string{"TED enviada - Aluguel", "TED enviada - Fornecedor", "Transferência - Pagamento"}, "despesas"},
-		{"bill_payment", true, []string{"Conta de luz", "Conta de telefone", "Internet Fibra", "IPTU"}, "contas"},
-		{"credit", false, []string{"Crédito recebido", "Estorno - Compra duplicada", "Bonificação empresarial"}, "credito"},
-		{"debit", true, []string{"Débito automático", "Tarifa bancária", "Cobrança serviço"}, "debito"},
+	type txTypeInfo struct {
+		Type         string
+		IsDebit      bool
+		Descs        []string
+		Counterparty []string
+		Category     string
+	}
+	txTypes := []txTypeInfo{
+		{"pix_sent", true, []string{"Pix enviado - Maria Silva", "Pix enviado - João LTDA", "Pix enviado - Ana Costa"}, []string{"Maria Silva", "João LTDA", "Ana Costa"}, "pix"},
+		{"pix_received", false, []string{"Pix recebido - Tech Corp", "Pix recebido - Vendas Online", "Pix recebido - Cliente ABC"}, []string{"Tech Corp", "Vendas Online", "Cliente ABC"}, "recebimento"},
+		{"debit_purchase", true, []string{"Supermercado Extra", "Posto Shell", "Farmácia São Paulo", "Restaurante Sabor"}, []string{"Supermercado Extra", "Posto Shell", "Farmácia São Paulo", "Restaurante Sabor"}, "compras"},
+		{"credit_purchase", true, []string{"Amazon AWS", "Google Cloud", "Material Escritório", "Uber Business"}, []string{"Amazon AWS", "Google Cloud", "Material Escritório", "Uber Business"}, "tecnologia"},
+		{"transfer_in", false, []string{"TED recebida - Fornecedor A", "DOC recebido - Partner B", "Transferência recebida - Cliente"}, []string{"Fornecedor A", "Partner B", "Cliente"}, "recebimento"},
+		{"transfer_out", true, []string{"TED enviada - Aluguel", "TED enviada - Fornecedor", "Transferência - Pagamento"}, []string{"Imobiliária", "Fornecedor", "Pagamento"}, "despesas"},
+		{"bill_payment", true, []string{"Conta de luz", "Conta de telefone", "Internet Fibra", "IPTU"}, []string{"CPFL Energia", "Vivo Telefonia", "Vivo Fibra", "Prefeitura Municipal"}, "contas"},
+		{"credit", false, []string{"Crédito recebido", "Estorno - Compra duplicada", "Bonificação empresarial"}, []string{"Banco Itaú", "Banco Itaú", "Banco Itaú"}, "credito"},
+		{"debit", true, []string{"Débito automático", "Tarifa bancária", "Cobrança serviço"}, []string{"Banco Itaú", "Banco Itaú", "Banco Itaú"}, "debito"},
 	}
 
 	generated := 0
@@ -192,10 +194,13 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 	totalIncome := 0.0
 	totalExpenses := 0.0
 	now := time.Now()
+	var generatedTxns []domain.Transaction
 
 	for i := 0; i < req.Count; i++ {
 		txInfo := txTypes[rand.Intn(len(txTypes))]
-		desc := txInfo.Descs[rand.Intn(len(txInfo.Descs))]
+		idx := rand.Intn(len(txInfo.Descs))
+		desc := txInfo.Descs[idx]
+		counterparty := txInfo.Counterparty[idx]
 		amount := float64(rand.Intn(490000)+1000) / 100.0 // R$ 10.00 to R$ 5000.00
 		daysAgo := rand.Intn(daysSpan)
 		txDate := now.AddDate(0, 0, -daysAgo)
@@ -204,14 +209,16 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 			amount = -amount
 		}
 
+		txID := uuid.New().String()
 		tx := map[string]any{
-			"id":          uuid.New().String(),
-			"customer_id": req.CustomerID,
-			"date":        txDate.Format(time.RFC3339),
-			"description": desc,
-			"amount":      amount,
-			"type":        txInfo.Type,
-			"category":    txInfo.Category,
+			"id":           txID,
+			"customer_id":  req.CustomerID,
+			"date":         txDate.Format(time.RFC3339),
+			"description":  desc,
+			"amount":       amount,
+			"type":         txInfo.Type,
+			"category":     txInfo.Category,
+			"counterparty": counterparty,
 		}
 
 		if err := s.store.InsertTransaction(ctx, tx); err != nil {
@@ -225,6 +232,16 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		} else {
 			totalExpenses += -amount // store as positive value
 		}
+
+		generatedTxns = append(generatedTxns, domain.Transaction{
+			ID:           txID,
+			Date:         txDate,
+			Amount:       amount,
+			Type:         txInfo.Type,
+			Category:     txInfo.Category,
+			Description:  desc,
+			Counterparty: counterparty,
+		})
 	}
 
 	// Only update the account balance if explicitly requested via applyBalance flag.
@@ -250,12 +267,13 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 	)
 
 	return &domain.DevGenerateTransactionsResponse{
-		Success:   true,
-		Generated: generated,
-		Income:    totalIncome,
-		Expenses:  totalExpenses,
-		NetImpact: netImpact,
-		Message:   fmt.Sprintf("%d transações geradas com sucesso", generated),
+		Success:      true,
+		Generated:    generated,
+		Income:       totalIncome,
+		Expenses:     totalExpenses,
+		NetImpact:    netImpact,
+		Message:      fmt.Sprintf("%d transações geradas com sucesso", generated),
+		Transactions: generatedTxns,
 	}, nil
 }
 

@@ -174,13 +174,14 @@ func (c *Client) GetProfile(ctx context.Context, customerID string) (*domain.Cus
 
 // supabaseTransaction maps Supabase table columns.
 type supabaseTransaction struct {
-	ID          string  `json:"id"`
-	CustomerID  string  `json:"customer_id"`
-	Date        string  `json:"date"`
-	Amount      float64 `json:"amount"`
-	Type        string  `json:"type"`
-	Category    string  `json:"category"`
-	Description string  `json:"description"`
+	ID           string  `json:"id"`
+	CustomerID   string  `json:"customer_id"`
+	Date         string  `json:"date"`
+	Amount       float64 `json:"amount"`
+	Type         string  `json:"type"`
+	Category     string  `json:"category"`
+	Description  string  `json:"description"`
+	Counterparty string  `json:"counterparty"`
 }
 
 // GetTransactions fetches customer transactions from Supabase.
@@ -216,12 +217,13 @@ func (c *Client) GetTransactions(ctx context.Context, customerID string) ([]doma
 					t, _ = time.Parse("2006-01-02", r.Date)
 				}
 				transactions = append(transactions, domain.Transaction{
-					ID:          r.ID,
-					Date:        t,
-					Amount:      r.Amount,
-					Type:        r.Type,
-					Category:    r.Category,
-					Description: r.Description,
+					ID:           r.ID,
+					Date:         t,
+					Amount:       r.Amount,
+					Type:         r.Type,
+					Category:     r.Category,
+					Description:  r.Description,
+					Counterparty: r.Counterparty,
 				})
 			}
 			return nil
