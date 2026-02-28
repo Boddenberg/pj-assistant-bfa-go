@@ -192,11 +192,6 @@ func (s *BankingService) GetFinancialSummary(ctx context.Context, customerID, pe
 	monthlyExpenses := make(map[string]float64)
 
 	for _, tx := range txns {
-		// Skip devtools transactions — they are balance adjustments,
-		// not real income/expenses, and should not pollute the summary.
-		if tx.Category == "devtools" {
-			continue
-		}
 		monthKey := tx.Date.Format("2006-01")
 		if tx.Amount >= 0 {
 			totalIncome += tx.Amount
