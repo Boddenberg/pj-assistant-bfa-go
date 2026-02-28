@@ -116,7 +116,7 @@ func (c *Client) ListCreditCardTransactions(ctx context.Context, customerID, car
 	defer span.End()
 
 	offset := (page - 1) * pageSize
-	path := fmt.Sprintf("credit_card_transactions?customer_id=eq.%s&card_id=eq.%s&order=transaction_date.desc&limit=%d&offset=%d",
+	path := fmt.Sprintf("credit_card_transactions?customer_id=eq.%s&card_id=eq.%s&order=transaction_date.desc,created_at.desc&limit=%d&offset=%d",
 		customerID, cardID, pageSize, offset)
 	body, err := c.doRequest(ctx, http.MethodGet, path)
 	if err != nil {
