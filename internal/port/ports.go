@@ -5,9 +5,9 @@
 // Individual store interfaces are defined in separate files:
 //   - account_port.go  → AccountStore
 //   - pix_port.go      → PixKeyStore, PixTransferStore, PixReceiptStore,
-//                         CustomerLookupStore, ScheduledTransferStore
+//     CustomerLookupStore, ScheduledTransferStore
 //   - cards_port.go    → CreditCardStore, CreditCardTransactionStore,
-//                         CreditCardInvoiceStore
+//     CreditCardInvoiceStore
 //   - billing_port.go  → BillingStore
 //   - analytics_port.go→ AnalyticsStore
 package port

@@ -306,19 +306,8 @@ func (s *BankingService) debitSenderCreditCard(ctx context.Context, customerID s
 			zap.String("customer_id", customerID), zap.Error(txErr))
 	}
 
-	txSentCC := map[string]any{
-		"id":          uuid.New().String(),
-		"customer_id": customerID,
-		"date":        now.Format(time.RFC3339),
-		"description": descSent,
-		"amount":      -faturaAmount,
-		"type":        "pix_sent",
-		"category":    "pix",
-	}
-	if txErr := s.store.InsertTransaction(ctx, txSentCC); txErr != nil {
-		s.logger.Error("failed to record pix credit card in customer_transactions",
-			zap.String("customer_id", customerID), zap.Error(txErr))
-	}
+	// NOTE: PIX via credit card is NOT recorded in customer_transactions (extrato).
+	// It lives exclusively in credit_card_transactions (fatura) of the selected card.
 }
 
 func (s *BankingService) debitSenderBalance(ctx context.Context, customerID string, amount float64, descSent string, now time.Time) {
