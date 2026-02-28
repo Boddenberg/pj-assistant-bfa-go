@@ -1,6 +1,15 @@
 // Package port defines the interfaces (ports) for external dependencies.
 // Following hexagonal architecture, these ports decouple the domain/service
 // layer from concrete implementations.
+//
+// Individual store interfaces are defined in separate files:
+//   - account_port.go  → AccountStore
+//   - pix_port.go      → PixKeyStore, PixTransferStore, PixReceiptStore,
+//                         CustomerLookupStore, ScheduledTransferStore
+//   - cards_port.go    → CreditCardStore, CreditCardTransactionStore,
+//                         CreditCardInvoiceStore
+//   - billing_port.go  → BillingStore
+//   - analytics_port.go→ AnalyticsStore
 package port
 
 import (
@@ -32,107 +41,21 @@ type Cache[T any] interface {
 	Delete(key string)
 }
 
-// BankingStore defines all data operations for banking features.
-// Implemented by the Supabase adapter (or any other persistence layer).
+// BankingStore composes all domain-specific store interfaces into a single
+// aggregate interface. This is consumed by BankingService which orchestrates
+// cross-domain operations. The Supabase Client satisfies all sub-interfaces.
 type BankingStore interface {
-	// Accounts
-	ListAccounts(ctx context.Context, customerID string) ([]domain.Account, error)
-	GetAccount(ctx context.Context, customerID, accountID string) (*domain.Account, error)
-	GetPrimaryAccount(ctx context.Context, customerID string) (*domain.Account, error)
-
-	// PIX Keys
-	ListPixKeys(ctx context.Context, customerID string) ([]domain.PixKey, error)
-	LookupPixKey(ctx context.Context, keyType, keyValue string) (*domain.PixKey, error)
-	LookupPixKeyByValue(ctx context.Context, keyValue string) (*domain.PixKey, error)
-	CreatePixKey(ctx context.Context, key *domain.PixKey) (*domain.PixKey, error)
-	DeletePixKey(ctx context.Context, customerID, keyID string) error
-
-	// Customer name lookup (for pix recipient display)
-	GetCustomerName(ctx context.Context, customerID string) (string, error)
-	// Full customer profile + account lookup (for pix key lookup response)
-	GetCustomerLookupData(ctx context.Context, customerID string) (name, document, bank, branch, account string, err error)
-
-	// PIX Transfers
-	CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error)
-	ListPixTransfers(ctx context.Context, customerID string, page, pageSize int) ([]domain.PixTransfer, error)
-	GetPixTransfer(ctx context.Context, customerID, transferID string) (*domain.PixTransfer, error)
-	UpdatePixTransferStatus(ctx context.Context, transferID, status string) error
-
-	// PIX Receipts
-	SavePixReceipt(ctx context.Context, receipt *domain.PixReceipt) (*domain.PixReceipt, error)
-	GetPixReceipt(ctx context.Context, receiptID string) (*domain.PixReceipt, error)
-	GetPixReceiptByTransferID(ctx context.Context, transferID string) (*domain.PixReceipt, error)
-	ListPixReceipts(ctx context.Context, customerID string) ([]domain.PixReceipt, error)
-
-	// Scheduled Transfers
-	CreateScheduledTransfer(ctx context.Context, customerID string, req *domain.ScheduledTransferRequest) (*domain.ScheduledTransfer, error)
-	ListScheduledTransfers(ctx context.Context, customerID string) ([]domain.ScheduledTransfer, error)
-	GetScheduledTransfer(ctx context.Context, customerID, transferID string) (*domain.ScheduledTransfer, error)
-	UpdateScheduledTransferStatus(ctx context.Context, transferID, status string) error
-
-	// Credit Cards
-	CreateCreditCard(ctx context.Context, customerID string, req *domain.CreditCardRequest) (*domain.CreditCard, error)
-	ListCreditCards(ctx context.Context, customerID string) ([]domain.CreditCard, error)
-	GetCreditCard(ctx context.Context, customerID, cardID string) (*domain.CreditCard, error)
-	UpdateCreditCardStatus(ctx context.Context, cardID, status string) error
-
-	// Credit Card Transactions
-	ListCreditCardTransactions(ctx context.Context, customerID, cardID string, page, pageSize int) ([]domain.CreditCardTransaction, error)
-
-	// Credit Card Invoices
-	ListCreditCardInvoices(ctx context.Context, customerID, cardID string) ([]domain.CreditCardInvoice, error)
-	GetCreditCardInvoice(ctx context.Context, customerID, cardID, invoiceID string) (*domain.CreditCardInvoice, error)
-	GetCreditCardInvoiceByMonth(ctx context.Context, customerID, cardID, month string) (*domain.CreditCardInvoice, error)
-	CreateCreditCardInvoice(ctx context.Context, invoice map[string]any) (*domain.CreditCardInvoice, error)
-
-	// Bill Payments
-	CreateBillPayment(ctx context.Context, customerID string, req *domain.BillPaymentRequest, validation *domain.BarcodeValidationResponse) (*domain.BillPayment, error)
-	ListBillPayments(ctx context.Context, customerID string, page, pageSize int) ([]domain.BillPayment, error)
-	GetBillPayment(ctx context.Context, customerID, billID string) (*domain.BillPayment, error)
-	UpdateBillPaymentStatus(ctx context.Context, billID, status string) error
-
-	// Debit Purchases
-	ListDebitPurchases(ctx context.Context, customerID string, page, pageSize int) ([]domain.DebitPurchase, error)
-	CreateDebitPurchase(ctx context.Context, customerID string, req *domain.DebitPurchaseRequest) (*domain.DebitPurchase, error)
-
-	// Spending Analytics
-	GetSpendingSummary(ctx context.Context, customerID, periodType string) (*domain.SpendingSummary, error)
-	ListBudgets(ctx context.Context, customerID string) ([]domain.SpendingBudget, error)
-	CreateBudget(ctx context.Context, budget *domain.SpendingBudget) (*domain.SpendingBudget, error)
-	UpdateBudget(ctx context.Context, budget *domain.SpendingBudget) (*domain.SpendingBudget, error)
-
-	// Favorites
-	ListFavorites(ctx context.Context, customerID string) ([]domain.Favorite, error)
-	CreateFavorite(ctx context.Context, fav *domain.Favorite) (*domain.Favorite, error)
-	DeleteFavorite(ctx context.Context, customerID, favoriteID string) error
-
-	// Transaction Limits
-	ListTransactionLimits(ctx context.Context, customerID string) ([]domain.TransactionLimit, error)
-	GetTransactionLimit(ctx context.Context, customerID, txType string) (*domain.TransactionLimit, error)
-	UpdateTransactionLimit(ctx context.Context, limit *domain.TransactionLimit) (*domain.TransactionLimit, error)
-
-	// Notifications
-	ListNotifications(ctx context.Context, customerID string, unreadOnly bool, page, pageSize int) ([]domain.Notification, error)
-	MarkNotificationRead(ctx context.Context, notifID string) error
-
-	// Transactions (bank statement — needed for summary)
-	GetTransactionSummary(ctx context.Context, customerID string) (*domain.TransactionSummary, error)
-	ListTransactions(ctx context.Context, customerID string, from, to string) ([]domain.Transaction, error)
-	InsertTransaction(ctx context.Context, data map[string]any) error
-
-	// Account balance update (dev tools)
-	UpdateAccountBalance(ctx context.Context, customerID string, delta float64) (*domain.Account, error)
-
-	// Credit card limit update (dev tools)
-	UpdateCreditCardLimit(ctx context.Context, customerID string, newLimit float64) error
-
-	// Credit card transaction insert (dev tools)
-	InsertCreditCardTransaction(ctx context.Context, data map[string]any) error
-	UpdateCreditCardUsedLimit(ctx context.Context, cardID string, usedLimit, availableLimit float64) error
-	UpdateCreditCardPixCreditUsed(ctx context.Context, cardID string, pixCreditUsed float64) error
-
-	// Credit card invoice update
-	UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, status string) error
+	AccountStore
+	PixKeyStore
+	PixTransferStore
+	PixReceiptStore
+	CustomerLookupStore
+	ScheduledTransferStore
+	CreditCardStore
+	CreditCardTransactionStore
+	CreditCardInvoiceStore
+	BillingStore
+	AnalyticsStore
 }
 
 // AuthStore defines all data operations for the authentication system.
