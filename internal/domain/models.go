@@ -1047,10 +1047,11 @@ type DevSetCreditLimitResponse struct {
 
 // DevGenerateTransactionsRequest is the body for POST /v1/dev/generate-transactions.
 type DevGenerateTransactionsRequest struct {
-	CustomerID string `json:"customerId"`
-	Count      int    `json:"count"`
-	Months     int    `json:"months"` // how many months back to spread transactions (default 1, max 12)
-	Period     string `json:"period"` // "current-month" or "last-12-months" (overrides months if set)
+	CustomerID   string `json:"customerId"`
+	Count        int    `json:"count"`
+	Months       int    `json:"months"`       // how many months back to spread transactions (default 1, max 12)
+	Period       string `json:"period"`       // "current-month" or "last-12-months" (overrides months if set)
+	ApplyBalance bool   `json:"applyBalance"` // if true, also update account balance with net impact (default false)
 }
 
 // DevGenerateTransactionsResponse is returned by POST /v1/dev/generate-transactions.

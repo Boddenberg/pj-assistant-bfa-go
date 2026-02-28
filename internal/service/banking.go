@@ -1905,8 +1905,10 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		}
 	}
 
-	// Update the account balance to reflect the net impact of generated transactions
-	if netImpact != 0 {
+	// Only update the account balance if explicitly requested via applyBalance flag.
+	// By default, generated transactions are just for extrato/history and should NOT
+	// change the real account balance — that was causing random balance fluctuations.
+	if req.ApplyBalance && netImpact != 0 {
 		if _, balErr := s.store.UpdateAccountBalance(ctx, req.CustomerID, netImpact); balErr != nil {
 			s.logger.Error("DEV: failed to update balance after generating transactions",
 				zap.String("customer_id", req.CustomerID),

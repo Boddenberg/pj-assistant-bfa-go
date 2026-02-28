@@ -1242,16 +1242,12 @@ func (c *Client) UpdateAccountBalance(ctx context.Context, customerID string, de
 	ctx, span := tracer.Start(ctx, "Supabase.UpdateAccountBalance")
 	defer span.End()
 
-	// Get primary account
-	accts, err := c.ListAccounts(ctx, customerID)
+	// Get primary (active) account — never use ListAccounts which may return inactive accounts
+	acct, err := c.GetPrimaryAccount(ctx, customerID)
 	if err != nil {
 		return nil, err
 	}
-	if len(accts) == 0 {
-		return nil, &domain.ErrNotFound{Resource: "account", ID: customerID}
-	}
 
-	acct := accts[0]
 	newBalance := acct.Balance + delta
 	newAvailable := acct.AvailableBalance + delta
 
@@ -1264,21 +1260,18 @@ func (c *Client) UpdateAccountBalance(ctx context.Context, customerID string, de
 	}
 
 	// Re-fetch to confirm the update actually persisted
-	updated, err := c.ListAccounts(ctx, customerID)
+	updated, err := c.GetPrimaryAccount(ctx, customerID)
 	if err != nil {
 		return nil, fmt.Errorf("re-fetch after balance update: %w", err)
 	}
-	if len(updated) == 0 {
-		return nil, fmt.Errorf("account disappeared after balance update")
-	}
 
 	c.logger.Info("supabase: balance updated",
-		zap.String("account_id", updated[0].ID),
+		zap.String("account_id", updated.ID),
 		zap.Float64("old_balance", acct.Balance),
-		zap.Float64("new_balance", updated[0].Balance),
+		zap.Float64("new_balance", updated.Balance),
 	)
 
-	return &updated[0], nil
+	return updated, nil
 }
 
 // --- Credit Card Limit Update (dev tools) ---
