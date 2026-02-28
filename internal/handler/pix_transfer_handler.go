@@ -16,6 +16,14 @@ import (
 // PIX Transfer — single transfer + credit-card transfer
 // ============================================================
 
+const (
+	// PixCreditFeeRate is the fee charged per installment on PIX via credit card (2%).
+	PixCreditFeeRate = 0.02
+
+	// PixCreditMaxInstallments is the maximum number of installments allowed.
+	PixCreditMaxInstallments = 12
+)
+
 func pixTransferHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, span := tracer.Start(r.Context(), "POST /v1/pix/transfer")
@@ -108,7 +116,7 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 		if apiReq.Installments <= 0 {
 			apiReq.Installments = 1
 		}
-		if apiReq.Installments > 12 {
+		if apiReq.Installments > PixCreditMaxInstallments {
 			writeError(w, http.StatusBadRequest, "installments must be between 1 and 12")
 			return
 		}
@@ -131,8 +139,7 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 			return
 		}
 
-		feeRate := 0.02
-		totalWithFees := apiReq.Amount * (1 + feeRate*float64(apiReq.Installments-1))
+		totalWithFees := apiReq.Amount * (1 + PixCreditFeeRate*float64(apiReq.Installments-1))
 
 		req := &domain.PixTransferRequest{
 			IdempotencyKey:         uuid.New().String(),
@@ -144,7 +151,7 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 			FundedBy:               "credit_card",
 			CreditCardID:           apiReq.CreditCardID,
 			CreditCardInstallments: apiReq.Installments,
-			FeeRate:                feeRate,
+			FeeRate:                PixCreditFeeRate,
 			TotalWithFees:          totalWithFees,
 		}
 

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -130,34 +131,7 @@ func cardInvoiceByMonthHandler(bankSvc *service.BankingService, logger *zap.Logg
 		cardID := chi.URLParam(r, "cardId")
 		month := chi.URLParam(r, "month")
 
-		invoice, err := bankSvc.GetCardInvoiceByMonth(ctx, "", cardID, month)
-		if err != nil {
-			handleServiceError(w, err, logger)
-			return
-		}
-
-		txns, _ := bankSvc.ListCardTransactions(ctx, invoice.CustomerID, cardID, 1, 500)
-
-		// Only include transactions from the requested month
-		txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
-		for _, t := range txns {
-			if t.TransactionDate.Format("2006-01") == month {
-				txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
-			}
-		}
-
-		resp := domain.CreditCardInvoiceAPIResponse{
-			ID:             invoice.ID,
-			CardID:         invoice.CardID,
-			ReferenceMonth: invoice.ReferenceMonth,
-			TotalAmount:    invoice.TotalAmount,
-			MinimumPayment: invoice.MinimumPayment,
-			DueDate:        invoice.DueDate,
-			Status:         invoice.Status,
-			Transactions:   txnResp,
-		}
-
-		writeJSON(w, http.StatusOK, resp)
+		respondWithInvoice(ctx, w, bankSvc, logger, "", cardID, month)
 	}
 }
 
@@ -168,37 +142,48 @@ func cardInvoiceCurrentHandler(bankSvc *service.BankingService, logger *zap.Logg
 
 		customerID := chi.URLParam(r, "customerId")
 		cardID := chi.URLParam(r, "cardId")
-
 		currentMonth := time.Now().Format("2006-01")
-		invoice, err := bankSvc.GetCardInvoiceByMonth(ctx, customerID, cardID, currentMonth)
-		if err != nil {
-			handleServiceError(w, err, logger)
-			return
-		}
 
-		txns, _ := bankSvc.ListCardTransactions(ctx, customerID, cardID, 1, 500)
-
-		// Only include transactions from the current month
-		txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
-		for _, t := range txns {
-			if t.TransactionDate.Format("2006-01") == currentMonth {
-				txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
-			}
-		}
-
-		resp := domain.CreditCardInvoiceAPIResponse{
-			ID:             invoice.ID,
-			CardID:         invoice.CardID,
-			ReferenceMonth: invoice.ReferenceMonth,
-			TotalAmount:    invoice.TotalAmount,
-			MinimumPayment: invoice.MinimumPayment,
-			DueDate:        invoice.DueDate,
-			Status:         invoice.Status,
-			Transactions:   txnResp,
-		}
-
-		writeJSON(w, http.StatusOK, resp)
+		respondWithInvoice(ctx, w, bankSvc, logger, customerID, cardID, currentMonth)
 	}
+}
+
+// respondWithInvoice is the shared logic for both invoice endpoints.
+// It fetches the invoice, filters transactions by month, and writes the JSON response.
+func respondWithInvoice(ctx context.Context, w http.ResponseWriter, bankSvc *service.BankingService, logger *zap.Logger, customerID, cardID, month string) {
+	invoice, err := bankSvc.GetCardInvoiceByMonth(ctx, customerID, cardID, month)
+	if err != nil {
+		handleServiceError(w, err, logger)
+		return
+	}
+
+	// Resolve customerID for transaction lookup (may be empty from the by-month endpoint)
+	txCustomerID := customerID
+	if txCustomerID == "" {
+		txCustomerID = invoice.CustomerID
+	}
+
+	const maxTransactions = 500
+	txns, _ := bankSvc.ListCardTransactions(ctx, txCustomerID, cardID, 1, maxTransactions)
+
+	// Only include transactions from the requested month
+	txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
+	for _, t := range txns {
+		if t.TransactionDate.Format("2006-01") == month {
+			txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
+		}
+	}
+
+	writeJSON(w, http.StatusOK, domain.CreditCardInvoiceAPIResponse{
+		ID:             invoice.ID,
+		CardID:         invoice.CardID,
+		ReferenceMonth: invoice.ReferenceMonth,
+		TotalAmount:    invoice.TotalAmount,
+		MinimumPayment: invoice.MinimumPayment,
+		DueDate:        invoice.DueDate,
+		Status:         invoice.Status,
+		Transactions:   txnResp,
+	})
 }
 
 func cardBlockHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {

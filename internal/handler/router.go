@@ -33,7 +33,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 	// --- Operational endpoints ---
 	r.Get("/healthz", healthzHandler(bankSvc, logger))
 	r.Get("/readyz", readyzHandler())
-	r.Handle("/metrics", promhttp.Handler())
+	r.Handle("/metrics", promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{}))
 
 	// --- API v1 ---
 	r.Route("/v1", func(r chi.Router) {

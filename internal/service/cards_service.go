@@ -14,6 +14,20 @@ import (
 )
 
 // ============================================================
+// Credit Cards — Business Constants
+// ============================================================
+
+const (
+	// MinimumPaymentRate is the percentage of the invoice total used
+	// to calculate the minimum payment (15%).
+	MinimumPaymentRate = 0.15
+
+	// DefaultTransactionPageSize is the max number of transactions
+	// fetched in a single query when building invoices.
+	DefaultTransactionPageSize = 500
+)
+
+// ============================================================
 // Credit Cards
 // ============================================================
 
@@ -219,19 +233,13 @@ func (s *BankingService) GetCardInvoiceByMonth(ctx context.Context, customerID, 
 		if resolvedCustomer == "" {
 			resolvedCustomer = customerID
 		}
-		txns, txErr := s.store.ListCreditCardTransactions(ctx, resolvedCustomer, cardID, 1, 500)
+		txns, txErr := s.store.ListCreditCardTransactions(ctx, resolvedCustomer, cardID, 1, DefaultTransactionPageSize)
 		if txErr == nil {
-			var recalcTotal float64
-			for _, t := range txns {
-				if t.TransactionDate.Format("2006-01") == month {
-					recalcTotal += t.Amount
-				}
-			}
+			recalcTotal := sumTransactionsForMonth(txns, month)
 			if recalcTotal != invoice.TotalAmount {
 				invoice.TotalAmount = recalcTotal
-				invoice.MinimumPayment = recalcTotal * 0.15
-				// Persist the corrected totals in background
-				_ = s.store.UpdateCreditCardInvoiceTotals(ctx, invoice.ID, recalcTotal, recalcTotal*0.15)
+				invoice.MinimumPayment = recalcTotal * MinimumPaymentRate
+				_ = s.store.UpdateCreditCardInvoiceTotals(ctx, invoice.ID, recalcTotal, recalcTotal*MinimumPaymentRate)
 			}
 		}
 		return invoice, nil
@@ -253,19 +261,13 @@ func (s *BankingService) GetCardInvoiceByMonth(ctx context.Context, customerID, 
 	}
 
 	// Fetch all transactions for this card (large page to capture all)
-	txns, txErr := s.store.ListCreditCardTransactions(ctx, customerID, cardID, 1, 500)
+	txns, txErr := s.store.ListCreditCardTransactions(ctx, customerID, cardID, 1, DefaultTransactionPageSize)
 	if txErr != nil {
 		return nil, txErr
 	}
 
-	// Filter transactions that belong to this reference month
-	var totalAmount float64
-	for _, t := range txns {
-		txMonth := t.TransactionDate.Format("2006-01")
-		if txMonth == month {
-			totalAmount += t.Amount
-		}
-	}
+	// Sum only the transactions that belong to this reference month
+	totalAmount := sumTransactionsForMonth(txns, month)
 
 	// Get card details to determine billing/due days
 	card, cardErr := s.store.GetCreditCard(ctx, customerID, cardID)
@@ -293,7 +295,7 @@ func (s *BankingService) GetCardInvoiceByMonth(ctx context.Context, customerID, 
 	closeDate := time.Date(year, mon, billingDay, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
 	dueDate := time.Date(year, mon, dueDay, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
 
-	minPayment := totalAmount * 0.15
+	minPayment := totalAmount * MinimumPaymentRate
 
 	invoiceData := map[string]any{
 		"id":              uuid.New().String(),
@@ -330,6 +332,18 @@ func (s *BankingService) GetCardInvoiceByMonth(ctx context.Context, customerID, 
 	)
 
 	return newInvoice, nil
+}
+
+// sumTransactionsForMonth returns the total amount of transactions
+// whose transaction_date falls in the given month (format "2006-01").
+func sumTransactionsForMonth(txns []domain.CreditCardTransaction, month string) float64 {
+	var total float64
+	for _, t := range txns {
+		if t.TransactionDate.Format("2006-01") == month {
+			total += t.Amount
+		}
+	}
+	return total
 }
 
 // ============================================================

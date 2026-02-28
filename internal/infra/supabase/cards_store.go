@@ -14,6 +14,16 @@ import (
 // Credit Cards — CRUD via PostgREST
 // ============================================================
 
+// cardFilter builds a PostgREST filter string for card queries.
+// When customerID is empty, it filters by card_id only.
+// When present, it also includes customer_id for extra safety.
+func cardFilter(customerID, cardID string) string {
+	if customerID != "" {
+		return fmt.Sprintf("customer_id=eq.%s&card_id=eq.%s", customerID, cardID)
+	}
+	return fmt.Sprintf("card_id=eq.%s", cardID)
+}
+
 func (c *Client) CreateCreditCard(ctx context.Context, customerID string, req *domain.CreditCardRequest) (*domain.CreditCard, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.CreateCreditCard")
 	defer span.End()
@@ -116,14 +126,8 @@ func (c *Client) ListCreditCardTransactions(ctx context.Context, customerID, car
 	defer span.End()
 
 	offset := (page - 1) * pageSize
-	var path string
-	if customerID != "" {
-		path = fmt.Sprintf("credit_card_transactions?customer_id=eq.%s&card_id=eq.%s&order=transaction_date.desc,created_at.desc&limit=%d&offset=%d",
-			customerID, cardID, pageSize, offset)
-	} else {
-		path = fmt.Sprintf("credit_card_transactions?card_id=eq.%s&order=transaction_date.desc,created_at.desc&limit=%d&offset=%d",
-			cardID, pageSize, offset)
-	}
+	path := fmt.Sprintf("credit_card_transactions?%s&order=transaction_date.desc,created_at.desc&limit=%d&offset=%d",
+		cardFilter(customerID, cardID), pageSize, offset)
 	body, err := c.doRequest(ctx, http.MethodGet, path)
 	if err != nil {
 		return nil, err
@@ -142,12 +146,7 @@ func (c *Client) ListCreditCardInvoices(ctx context.Context, customerID, cardID 
 	ctx, span := tracer.Start(ctx, "Supabase.ListCreditCardInvoices")
 	defer span.End()
 
-	var path string
-	if customerID != "" {
-		path = fmt.Sprintf("credit_card_invoices?customer_id=eq.%s&card_id=eq.%s&order=due_date.desc", customerID, cardID)
-	} else {
-		path = fmt.Sprintf("credit_card_invoices?card_id=eq.%s&order=due_date.desc", cardID)
-	}
+	path := fmt.Sprintf("credit_card_invoices?%s&order=due_date.desc", cardFilter(customerID, cardID))
 	body, err := c.doRequest(ctx, http.MethodGet, path)
 	if err != nil {
 		return nil, err
@@ -164,12 +163,7 @@ func (c *Client) GetCreditCardInvoice(ctx context.Context, customerID, cardID, i
 	ctx, span := tracer.Start(ctx, "Supabase.GetCreditCardInvoice")
 	defer span.End()
 
-	var path string
-	if customerID != "" {
-		path = fmt.Sprintf("credit_card_invoices?customer_id=eq.%s&card_id=eq.%s&id=eq.%s&limit=1", customerID, cardID, invoiceID)
-	} else {
-		path = fmt.Sprintf("credit_card_invoices?card_id=eq.%s&id=eq.%s&limit=1", cardID, invoiceID)
-	}
+	path := fmt.Sprintf("credit_card_invoices?%s&id=eq.%s&limit=1", cardFilter(customerID, cardID), invoiceID)
 	body, err := c.doRequest(ctx, http.MethodGet, path)
 	if err != nil {
 		return nil, err
@@ -189,12 +183,7 @@ func (c *Client) GetCreditCardInvoiceByMonth(ctx context.Context, customerID, ca
 	ctx, span := tracer.Start(ctx, "Supabase.GetCreditCardInvoiceByMonth")
 	defer span.End()
 
-	var path string
-	if customerID != "" {
-		path = fmt.Sprintf("credit_card_invoices?customer_id=eq.%s&card_id=eq.%s&reference_month=eq.%s&limit=1", customerID, cardID, month)
-	} else {
-		path = fmt.Sprintf("credit_card_invoices?card_id=eq.%s&reference_month=eq.%s&limit=1", cardID, month)
-	}
+	path := fmt.Sprintf("credit_card_invoices?%s&reference_month=eq.%s&limit=1", cardFilter(customerID, cardID), month)
 	body, err := c.doRequest(ctx, http.MethodGet, path)
 	if err != nil {
 		return nil, err

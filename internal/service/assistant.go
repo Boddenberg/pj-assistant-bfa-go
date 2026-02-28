@@ -79,6 +79,11 @@ func (a *Assistant) GetTransactions(ctx context.Context, customerID string) ([]d
 // GetAssistantResponse orchestrates all external calls and returns the final response.
 // It uses concurrent calls for profile and transactions, then calls the AI agent.
 func (a *Assistant) GetAssistantResponse(ctx context.Context, customerID string, message string) (*domain.InternalAssistantResult, error) {
+	// Bail out early if the caller already cancelled.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	ctx, span := tracer.Start(ctx, "Assistant.GetAssistantResponse")
 	defer span.End()
 	span.SetAttributes(attribute.String("customer.id", customerID))

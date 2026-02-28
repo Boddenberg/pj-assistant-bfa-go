@@ -10,6 +10,10 @@ import (
 
 // Metrics holds all Prometheus metrics for the BFA.
 type Metrics struct {
+	// Registry is the Prometheus registry that owns these metrics.
+	// Exposed so the /metrics endpoint can use it.
+	Registry *prometheus.Registry
+
 	requestDuration *prometheus.HistogramVec
 	externalErrors  *prometheus.CounterVec
 	cacheHits       *prometheus.CounterVec
@@ -18,10 +22,17 @@ type Metrics struct {
 	requestsTotal   *prometheus.CounterVec
 }
 
-// NewMetrics registers and returns all application metrics.
+// NewMetrics creates a dedicated Prometheus registry and registers all
+// application metrics in it. Using a private registry avoids "duplicate
+// collector" panics when NewMetrics is called more than once (e.g. in tests).
 func NewMetrics() *Metrics {
+	reg := prometheus.NewRegistry()
+	factory := promauto.With(reg)
+
 	return &Metrics{
-		requestDuration: promauto.NewHistogramVec(
+		Registry: reg,
+
+		requestDuration: factory.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Name:    "bfa_request_duration_seconds",
 				Help:    "Duration of requests by operation.",
@@ -29,35 +40,35 @@ func NewMetrics() *Metrics {
 			},
 			[]string{"operation"},
 		),
-		externalErrors: promauto.NewCounterVec(
+		externalErrors: factory.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "bfa_external_errors_total",
 				Help: "Total errors from external services.",
 			},
 			[]string{"service"},
 		),
-		cacheHits: promauto.NewCounterVec(
+		cacheHits: factory.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "bfa_cache_hits_total",
 				Help: "Total cache hits.",
 			},
 			[]string{"cache"},
 		),
-		cacheMisses: promauto.NewCounterVec(
+		cacheMisses: factory.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "bfa_cache_misses_total",
 				Help: "Total cache misses.",
 			},
 			[]string{"cache"},
 		),
-		tokensUsed: promauto.NewCounterVec(
+		tokensUsed: factory.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "bfa_llm_tokens_total",
 				Help: "Total LLM tokens consumed.",
 			},
 			[]string{"type"},
 		),
-		requestsTotal: promauto.NewCounterVec(
+		requestsTotal: factory.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "bfa_requests_total",
 				Help: "Total requests processed.",
