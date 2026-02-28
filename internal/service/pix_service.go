@@ -351,7 +351,7 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 			"transaction_date":    now.Format(time.RFC3339),
 			"amount":              faturaAmount,
 			"merchant_name":       descSent,
-			"category":            "pix_credito",
+			"category":            "other",
 			"description":         descSent,
 			"installments":        req.CreditCardInstallments,
 			"current_installment": 1,
@@ -374,7 +374,7 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 			"description": descSent,
 			"amount":      -faturaAmount,
 			"type":        "pix_sent",
-			"category":    "pix_credito",
+			"category":    "pix",
 		}
 		if txErr := s.store.InsertTransaction(ctx, txSentCC); txErr != nil {
 			s.logger.Error("failed to record pix credit card in customer_transactions",
