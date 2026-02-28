@@ -193,7 +193,7 @@ func (c *Client) GetTransactions(ctx context.Context, customerID string) ([]doma
 
 	_, err := c.cb.Execute(func() (any, error) {
 		return nil, resilience.RetryWithBackoff(ctx, c.cfg, func() error {
-			path := fmt.Sprintf("customer_transactions?customer_id=eq.%s&order=date.desc&limit=100", customerID)
+			path := fmt.Sprintf("customer_transactions?customer_id=eq.%s&order=date.desc&limit=500", customerID)
 			body, err := c.doRequest(ctx, http.MethodGet, path)
 			if err != nil {
 				return err

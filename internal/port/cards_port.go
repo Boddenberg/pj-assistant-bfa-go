@@ -30,4 +30,5 @@ type CreditCardInvoiceStore interface {
 	GetCreditCardInvoiceByMonth(ctx context.Context, customerID, cardID, month string) (*domain.CreditCardInvoice, error)
 	CreateCreditCardInvoice(ctx context.Context, invoice map[string]any) (*domain.CreditCardInvoice, error)
 	UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, status string) error
+	UpdateCreditCardInvoiceTotals(ctx context.Context, invoiceID string, totalAmount, minimumPayment float64) error
 }

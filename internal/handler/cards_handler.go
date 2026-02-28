@@ -136,11 +136,14 @@ func cardInvoiceByMonthHandler(bankSvc *service.BankingService, logger *zap.Logg
 			return
 		}
 
-		txns, _ := bankSvc.ListCardTransactions(ctx, invoice.CustomerID, cardID, 1, 100)
+		txns, _ := bankSvc.ListCardTransactions(ctx, invoice.CustomerID, cardID, 1, 500)
 
+		// Only include transactions from the requested month
 		txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
 		for _, t := range txns {
-			txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
+			if t.TransactionDate.Format("2006-01") == month {
+				txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
+			}
 		}
 
 		resp := domain.CreditCardInvoiceAPIResponse{
@@ -173,11 +176,14 @@ func cardInvoiceCurrentHandler(bankSvc *service.BankingService, logger *zap.Logg
 			return
 		}
 
-		txns, _ := bankSvc.ListCardTransactions(ctx, customerID, cardID, 1, 100)
+		txns, _ := bankSvc.ListCardTransactions(ctx, customerID, cardID, 1, 500)
 
+		// Only include transactions from the current month
 		txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
 		for _, t := range txns {
-			txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
+			if t.TransactionDate.Format("2006-01") == currentMonth {
+				txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
+			}
 		}
 
 		resp := domain.CreditCardInvoiceAPIResponse{

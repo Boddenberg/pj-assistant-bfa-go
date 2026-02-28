@@ -213,6 +213,27 @@ func (s *BankingService) GetCardInvoiceByMonth(ctx context.Context, customerID, 
 
 	invoice, err := s.store.GetCreditCardInvoiceByMonth(ctx, customerID, cardID, month)
 	if err == nil {
+		// Invoice exists — recalculate totalAmount from actual transactions
+		// to keep it in sync (transactions may have been added after creation).
+		resolvedCustomer := invoice.CustomerID
+		if resolvedCustomer == "" {
+			resolvedCustomer = customerID
+		}
+		txns, txErr := s.store.ListCreditCardTransactions(ctx, resolvedCustomer, cardID, 1, 500)
+		if txErr == nil {
+			var recalcTotal float64
+			for _, t := range txns {
+				if t.TransactionDate.Format("2006-01") == month {
+					recalcTotal += t.Amount
+				}
+			}
+			if recalcTotal != invoice.TotalAmount {
+				invoice.TotalAmount = recalcTotal
+				invoice.MinimumPayment = recalcTotal * 0.15
+				// Persist the corrected totals in background
+				_ = s.store.UpdateCreditCardInvoiceTotals(ctx, invoice.ID, recalcTotal, recalcTotal*0.15)
+			}
+		}
 		return invoice, nil
 	}
 

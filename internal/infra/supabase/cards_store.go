@@ -254,6 +254,17 @@ func (c *Client) UpdateCreditCardInvoiceStatus(ctx context.Context, invoiceID, s
 	})
 }
 
+// UpdateCreditCardInvoiceTotals updates totalAmount and minimumPayment on an invoice.
+func (c *Client) UpdateCreditCardInvoiceTotals(ctx context.Context, invoiceID string, totalAmount, minimumPayment float64) error {
+	ctx, span := tracer.Start(ctx, "Supabase.UpdateCreditCardInvoiceTotals")
+	defer span.End()
+
+	return c.doPatch(ctx, fmt.Sprintf("credit_card_invoices?id=eq.%s", invoiceID), map[string]any{
+		"total_amount":    totalAmount,
+		"minimum_payment": minimumPayment,
+	})
+}
+
 func (c *Client) CreateCreditCardInvoice(ctx context.Context, invoice map[string]any) (*domain.CreditCardInvoice, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.CreateCreditCardInvoice")
 	defer span.End()
