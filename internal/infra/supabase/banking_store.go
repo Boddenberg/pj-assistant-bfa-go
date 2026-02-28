@@ -797,6 +797,11 @@ func (c *Client) GetTransactionSummary(ctx context.Context, customerID string) (
 	summary := &domain.TransactionSummary{Count: len(txns)}
 	categoryTotals := make(map[string]float64)
 	for _, t := range txns {
+		// Skip devtools transactions from financial calculations —
+		// they are balance adjustments, not real income/expenses.
+		if t.Category == "devtools" {
+			continue
+		}
 		if t.Amount >= 0 {
 			summary.TotalCredits += t.Amount
 		} else {
