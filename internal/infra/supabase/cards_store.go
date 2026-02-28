@@ -28,6 +28,12 @@ func (c *Client) CreateCreditCard(ctx context.Context, customerID string, req *d
 	ctx, span := tracer.Start(ctx, "Supabase.CreateCreditCard")
 	defer span.End()
 
+	// Fetch the real holder name from the customer profile.
+	holderName := customerID // fallback
+	if name, err := c.GetCustomerName(ctx, customerID); err == nil && name != "" {
+		holderName = name
+	}
+
 	// Generate a random last4 for demo
 	last4 := fmt.Sprintf("%04d", time.Now().UnixNano()%10000)
 
@@ -35,7 +41,7 @@ func (c *Client) CreateCreditCard(ctx context.Context, customerID string, req *d
 		"customer_id":        customerID,
 		"account_id":         req.AccountID,
 		"card_number_last4":  last4,
-		"card_holder_name":   customerID, // will be updated with real name
+		"card_holder_name":   holderName,
 		"card_brand":         req.CardBrand,
 		"card_type":          req.CardType,
 		"credit_limit":       req.RequestedLimit,

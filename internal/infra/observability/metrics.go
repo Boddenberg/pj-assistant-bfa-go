@@ -1,11 +1,12 @@
 package observability
 
 import (
+	"time"
+
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	dto "github.com/prometheus/client_model/go"
-	"time"
 )
 
 // Metrics holds all Prometheus metrics for the BFA.

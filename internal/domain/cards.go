@@ -91,6 +91,8 @@ type CreditCardAPIResponse struct {
 	ID             string  `json:"id"`
 	LastFourDigits string  `json:"lastFourDigits"`
 	Brand          string  `json:"brand"`
+	CardType       string  `json:"cardType"`
+	HolderName     string  `json:"holderName"`
 	Status         string  `json:"status"`
 	Limit          float64 `json:"limit"`
 	AvailableLimit float64 `json:"availableLimit"`
