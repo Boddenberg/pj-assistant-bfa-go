@@ -214,6 +214,7 @@ func (c *Client) UpdateCreditCardLimit(ctx context.Context, customerID string, n
 	return c.doPatch(ctx, fmt.Sprintf("credit_cards?id=eq.%s", card.ID), map[string]any{
 		"credit_limit":    newLimit,
 		"available_limit": availableLimit,
+		"pix_credit_limit": newLimit,
 	})
 }
 

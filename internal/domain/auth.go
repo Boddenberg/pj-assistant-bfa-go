@@ -21,8 +21,9 @@ type DevAddBalanceResponse struct {
 
 // DevSetCreditLimitRequest is the body for POST /v1/dev/set-credit-limit.
 type DevSetCreditLimitRequest struct {
-	CustomerID  string  `json:"customerId"`
-	CreditLimit float64 `json:"creditLimit"`
+	CustomerID   string  `json:"customerId"`
+	CreditCardID string  `json:"creditCardId,omitempty"`
+	CreditLimit  float64 `json:"creditLimit"`
 }
 
 // DevSetCreditLimitResponse is returned by POST /v1/dev/set-credit-limit.

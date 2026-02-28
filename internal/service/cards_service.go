@@ -37,6 +37,9 @@ func (s *BankingService) RequestCreditCard(ctx context.Context, customerID strin
 	if req.DueDay == 0 {
 		req.DueDay = 20
 	}
+	if req.RequestedLimit <= 0 {
+		req.RequestedLimit = 10000 // default PJ limit
+	}
 
 	// Check account
 	_, err := s.store.GetAccount(ctx, customerID, req.AccountID)
