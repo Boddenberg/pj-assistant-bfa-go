@@ -411,6 +411,21 @@ func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID strin
 			s.logger.Error("failed to record pix credit card transaction in fatura",
 				zap.String("customer_id", customerID), zap.Error(txErr))
 		}
+
+		// Also record in customer_transactions so it appears in extrato and despesas
+		txSentCC := map[string]any{
+			"id":          uuid.New().String(),
+			"customer_id": customerID,
+			"date":        now.Format(time.RFC3339),
+			"description": descSent,
+			"amount":      -faturaAmount,
+			"type":        "pix_sent",
+			"category":    "pix_credito",
+		}
+		if txErr := s.store.InsertTransaction(ctx, txSentCC); txErr != nil {
+			s.logger.Error("failed to record pix credit card in customer_transactions",
+				zap.String("customer_id", customerID), zap.Error(txErr))
+		}
 	} else {
 		// ── 1b. Balance: debit account + record pix_sent in extrato ──
 		if _, balErr := s.store.UpdateAccountBalance(ctx, customerID, -req.Amount); balErr != nil {

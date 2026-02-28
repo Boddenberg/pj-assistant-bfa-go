@@ -823,9 +823,9 @@ func formatReceiptResponse(r *domain.PixReceipt) *domain.PixReceiptResponse {
 		FeeAmount:      r.FeeAmount,
 		TotalAmount:    r.TotalAmount,
 		Description:    r.Description,
-		E2EID:        r.EndToEndID,
-		FundedBy:     r.FundedBy,
-		Installments: r.Installments,
+		E2EID:          r.EndToEndID,
+		FundedBy:       r.FundedBy,
+		Installments:   r.Installments,
 		Sender: &domain.PixReceiptParty{
 			Name:     r.SenderName,
 			Document: r.SenderDocument,

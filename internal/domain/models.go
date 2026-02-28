@@ -146,7 +146,7 @@ type PixTransferRequest struct {
 	CreditCardInstallments int     `json:"credit_card_installments,omitempty"`
 	FeeRate                float64 `json:"fee_rate,omitempty"`        // e.g. 0.02 for 2% per installment
 	TotalWithFees          float64 `json:"total_with_fees,omitempty"` // amount * (1 + feeRate*(installments-1))
-	ScheduledFor           string  `json:"scheduled_for,omitempty"` // RFC3339 or empty for immediate
+	ScheduledFor           string  `json:"scheduled_for,omitempty"`   // RFC3339 or empty for immediate
 }
 
 // PixTransfer represents a PIX transfer record.
@@ -744,12 +744,12 @@ type PixReceiptResponse struct {
 	E2EID          string           `json:"e2eId"`
 	FundedBy       string           `json:"fundedBy"`
 	Installments   int              `json:"installments,omitempty"`
-	Sender       *PixReceiptParty `json:"sender"`
-	Recipient    *PixReceiptParty `json:"recipient"`
-	PixKey       *PixKeyInfo      `json:"pixKey,omitempty"`
-	Status       string           `json:"status"`
-	ExecutedAt   string           `json:"executedAt"`
-	CreatedAt    string           `json:"createdAt"`
+	Sender         *PixReceiptParty `json:"sender"`
+	Recipient      *PixReceiptParty `json:"recipient"`
+	PixKey         *PixKeyInfo      `json:"pixKey,omitempty"`
+	Status         string           `json:"status"`
+	ExecutedAt     string           `json:"executedAt"`
+	CreatedAt      string           `json:"createdAt"`
 }
 
 // PixReceiptParty represents a sender or recipient in a receipt.
