@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
@@ -284,22 +285,27 @@ func (s *BankingService) debitSenderCreditCard(ctx context.Context, customerID s
 	if faturaAmount <= 0 {
 		faturaAmount = req.Amount
 	}
+	installments := req.CreditCardInstallments
+	if installments <= 0 {
+		installments = 1
+	}
+	installmentAmount := faturaAmount / float64(installments)
+
 	ccTx := map[string]any{
 		"id":                  uuid.New().String(),
 		"card_id":             req.CreditCardID,
 		"customer_id":         customerID,
 		"transaction_date":    now.Format(time.RFC3339),
 		"amount":              faturaAmount,
+		"original_amount":     req.Amount,
+		"installment_amount":  math.Round(installmentAmount*100) / 100,
 		"merchant_name":       descSent,
 		"category":            "other",
 		"description":         descSent,
-		"installments":        req.CreditCardInstallments,
+		"installments":        installments,
 		"current_installment": 1,
 		"transaction_type":    "pix_credit",
 		"status":              "confirmed",
-	}
-	if req.CreditCardInstallments <= 0 {
-		ccTx["installments"] = 1
 	}
 	if txErr := s.store.InsertCreditCardTransaction(ctx, ccTx); txErr != nil {
 		s.logger.Error("failed to record pix credit card transaction in fatura",

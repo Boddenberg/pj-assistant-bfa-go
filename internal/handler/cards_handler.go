@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"time"
 
@@ -139,18 +140,7 @@ func cardInvoiceByMonthHandler(bankSvc *service.BankingService, logger *zap.Logg
 
 		txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
 		for _, t := range txns {
-			installmentStr := ""
-			if t.Installments > 1 {
-				installmentStr = fmt.Sprintf("%d/%d", t.CurrentInstallment, t.Installments)
-			}
-			txnResp = append(txnResp, domain.InvoiceTransactionResponse{
-				ID:          t.ID,
-				Date:        t.TransactionDate.Format(time.RFC3339),
-				Description: t.MerchantName,
-				Amount:      t.Amount,
-				Installment: installmentStr,
-				Category:    t.Category,
-			})
+			txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
 		}
 
 		resp := domain.CreditCardInvoiceAPIResponse{
@@ -187,18 +177,7 @@ func cardInvoiceCurrentHandler(bankSvc *service.BankingService, logger *zap.Logg
 
 		txnResp := make([]domain.InvoiceTransactionResponse, 0, len(txns))
 		for _, t := range txns {
-			installmentStr := ""
-			if t.Installments > 1 {
-				installmentStr = fmt.Sprintf("%d/%d", t.CurrentInstallment, t.Installments)
-			}
-			txnResp = append(txnResp, domain.InvoiceTransactionResponse{
-				ID:          t.ID,
-				Date:        t.TransactionDate.Format(time.RFC3339),
-				Description: t.MerchantName,
-				Amount:      t.Amount,
-				Installment: installmentStr,
-				Category:    t.Category,
-			})
+			txnResp = append(txnResp, buildInvoiceTransactionResponse(t))
 		}
 
 		resp := domain.CreditCardInvoiceAPIResponse{
@@ -270,4 +249,43 @@ func invoicePayHandler(bankSvc *service.BankingService, logger *zap.Logger) http
 
 		writeJSON(w, http.StatusOK, resp)
 	}
+}
+
+// buildInvoiceTransactionResponse converts a CreditCardTransaction into an
+// InvoiceTransactionResponse, including fee breakdown when original_amount
+// is present (e.g. PIX via credit card with installments/fees).
+func buildInvoiceTransactionResponse(t domain.CreditCardTransaction) domain.InvoiceTransactionResponse {
+	installmentStr := ""
+	if t.Installments > 1 {
+		installmentStr = fmt.Sprintf("%d/%d", t.CurrentInstallment, t.Installments)
+	}
+
+	resp := domain.InvoiceTransactionResponse{
+		ID:          t.ID,
+		Date:        t.TransactionDate.Format(time.RFC3339),
+		Description: t.MerchantName,
+		Amount:      t.Amount,
+		Installment: installmentStr,
+		Category:    t.Category,
+	}
+
+	// If original_amount is set and differs from amount, include fee breakdown.
+	if t.OriginalAmount != nil && *t.OriginalAmount > 0 {
+		resp.OriginalAmount = t.OriginalAmount
+		feeAmount := t.Amount - *t.OriginalAmount
+		if feeAmount > 0 {
+			feeRounded := math.Round(feeAmount*100) / 100
+			resp.FeeAmount = &feeRounded
+		}
+		totalWithFees := t.Amount
+		resp.TotalWithFees = &totalWithFees
+		// Show the original PIX amount as the main "amount"
+		resp.Amount = *t.OriginalAmount
+	}
+
+	if t.InstallmentAmount != nil && *t.InstallmentAmount > 0 {
+		resp.InstallmentAmount = t.InstallmentAmount
+	}
+
+	return resp
 }

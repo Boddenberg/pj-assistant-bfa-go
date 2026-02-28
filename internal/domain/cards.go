@@ -51,6 +51,8 @@ type CreditCardTransaction struct {
 	CustomerID         string    `json:"customer_id"`
 	TransactionDate    time.Time `json:"transaction_date"`
 	Amount             float64   `json:"amount"`
+	OriginalAmount     *float64  `json:"original_amount,omitempty"`
+	InstallmentAmount  *float64  `json:"installment_amount,omitempty"`
 	MerchantName       string    `json:"merchant_name"`
 	Category           string    `json:"category"`
 	Installments       int       `json:"installments"`
@@ -133,12 +135,16 @@ type CreditCardInvoiceAPIResponse struct {
 
 // InvoiceTransactionResponse is a transaction within an invoice.
 type InvoiceTransactionResponse struct {
-	ID          string  `json:"id"`
-	Date        string  `json:"date"`
-	Description string  `json:"description"`
-	Amount      float64 `json:"amount"`
-	Installment string  `json:"installment,omitempty"`
-	Category    string  `json:"category"`
+	ID                string   `json:"id"`
+	Date              string   `json:"date"`
+	Description       string   `json:"description"`
+	Amount            float64  `json:"amount"`
+	OriginalAmount    *float64 `json:"originalAmount,omitempty"`
+	FeeAmount         *float64 `json:"feeAmount,omitempty"`
+	TotalWithFees     *float64 `json:"totalWithFees,omitempty"`
+	InstallmentAmount *float64 `json:"installmentAmount,omitempty"`
+	Installment       string   `json:"installment,omitempty"`
+	Category          string   `json:"category"`
 }
 
 // InvoicePayRequest is the body for paying a credit card invoice.
