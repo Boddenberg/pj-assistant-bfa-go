@@ -221,39 +221,32 @@ type PixCreditCardRequest struct {
 }
 
 // PixCreditCardResponse is returned by POST /v1/pix/credit-card.
+// Shows the PIX amount sent. Fee/installment breakdown is available only in the fatura.
 type PixCreditCardResponse struct {
-	TransactionID    string        `json:"transactionId"`
-	Status           string        `json:"status"`
-	Amount           float64       `json:"amount"`
-	OriginalAmount   float64       `json:"originalAmount"`
-	FeeAmount        float64       `json:"feeAmount"`
-	TotalWithFees    float64       `json:"totalWithFees"`
-	Installments     int           `json:"installments"`
-	InstallmentValue float64       `json:"installmentValue"`
-	Recipient        *PixRecipient `json:"recipient"`
-	Timestamp        string        `json:"timestamp"`
-	ReceiptID        string        `json:"receiptId,omitempty"`
+	TransactionID string        `json:"transactionId"`
+	Status        string        `json:"status"`
+	Amount        float64       `json:"amount"`
+	Recipient     *PixRecipient `json:"recipient"`
+	Timestamp     string        `json:"timestamp"`
+	ReceiptID     string        `json:"receiptId,omitempty"`
 }
 
-// PixReceiptResponse is the formatted receipt returned to the frontend.
+// PixReceiptResponse is the formatted receipt (comprovante) returned to the frontend.
+// It shows ONLY the PIX amount transferred. Fee/installment details belong in the fatura.
 type PixReceiptResponse struct {
-	ID             string           `json:"id"`
-	TransferID     string           `json:"transferId"`
-	Direction      string           `json:"direction"`
-	Amount         float64          `json:"amount"`
-	OriginalAmount float64          `json:"originalAmount,omitempty"`
-	FeeAmount      float64          `json:"feeAmount,omitempty"`
-	TotalAmount    float64          `json:"totalAmount,omitempty"`
-	Description    string           `json:"description,omitempty"`
-	E2EID          string           `json:"e2eId"`
-	FundedBy       string           `json:"fundedBy"`
-	Installments   int              `json:"installments,omitempty"`
-	Sender         *PixReceiptParty `json:"sender"`
-	Recipient      *PixReceiptParty `json:"recipient"`
-	PixKey         *PixKeyInfo      `json:"pixKey,omitempty"`
-	Status         string           `json:"status"`
-	ExecutedAt     string           `json:"executedAt"`
-	CreatedAt      string           `json:"createdAt"`
+	ID          string           `json:"id"`
+	TransferID  string           `json:"transferId"`
+	Direction   string           `json:"direction"`
+	Amount      float64          `json:"amount"`
+	Description string           `json:"description,omitempty"`
+	E2EID       string           `json:"e2eId"`
+	FundedBy    string           `json:"fundedBy"`
+	Sender      *PixReceiptParty `json:"sender"`
+	Recipient   *PixReceiptParty `json:"recipient"`
+	PixKey      *PixKeyInfo      `json:"pixKey,omitempty"`
+	Status      string           `json:"status"`
+	ExecutedAt  string           `json:"executedAt"`
+	CreatedAt   string           `json:"createdAt"`
 }
 
 // PixReceiptParty represents a sender or recipient in a receipt.

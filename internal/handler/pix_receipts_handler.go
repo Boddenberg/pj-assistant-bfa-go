@@ -15,18 +15,16 @@ import (
 // ============================================================
 
 func formatReceiptResponse(r *domain.PixReceipt) *domain.PixReceiptResponse {
+	// Comprovante shows ONLY the PIX amount transferred.
+	// Fee/installment details are returned exclusively in the fatura do cartão.
 	return &domain.PixReceiptResponse{
-		ID:             r.ID,
-		TransferID:     r.TransferID,
-		Direction:      r.Direction,
-		Amount:         r.Amount,
-		OriginalAmount: r.OriginalAmount,
-		FeeAmount:      r.FeeAmount,
-		TotalAmount:    r.TotalAmount,
-		Description:    r.Description,
-		E2EID:          r.EndToEndID,
-		FundedBy:       r.FundedBy,
-		Installments:   r.Installments,
+		ID:          r.ID,
+		TransferID:  r.TransferID,
+		Direction:   r.Direction,
+		Amount:      r.Amount,
+		Description: r.Description,
+		E2EID:       r.EndToEndID,
+		FundedBy:    r.FundedBy,
 		Sender: &domain.PixReceiptParty{
 			Name:     r.SenderName,
 			Document: r.SenderDocument,

@@ -133,7 +133,6 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 
 		feeRate := 0.02
 		totalWithFees := apiReq.Amount * (1 + feeRate*float64(apiReq.Installments-1))
-		installmentValue := totalWithFees / float64(apiReq.Installments)
 
 		req := &domain.PixTransferRequest{
 			IdempotencyKey:         uuid.New().String(),
@@ -155,17 +154,10 @@ func pixCreditCardHandler(bankSvc *service.BankingService, logger *zap.Logger) h
 			return
 		}
 
-		feeAmount := totalWithFees - apiReq.Amount
-
 		resp := domain.PixCreditCardResponse{
-			TransactionID:    transfer.ID,
-			Status:           transfer.Status,
-			Amount:           apiReq.Amount,
-			OriginalAmount:   apiReq.Amount,
-			FeeAmount:        feeAmount,
-			TotalWithFees:    totalWithFees,
-			Installments:     apiReq.Installments,
-			InstallmentValue: installmentValue,
+			TransactionID: transfer.ID,
+			Status:        transfer.Status,
+			Amount:        apiReq.Amount,
 			Recipient: &domain.PixRecipient{
 				Name: transfer.DestinationName,
 				PixKey: &domain.PixKeyInfo{
