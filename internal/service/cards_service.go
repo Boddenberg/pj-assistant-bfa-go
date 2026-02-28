@@ -122,6 +122,22 @@ func (s *BankingService) UnblockCreditCard(ctx context.Context, customerID, card
 	return s.store.UpdateCreditCardStatus(ctx, cardID, "active")
 }
 
+// CancelCreditCardByID cancels a card permanently using only the cardID.
+func (s *BankingService) CancelCreditCardByID(ctx context.Context, cardID string) error {
+	ctx, span := bankTracer.Start(ctx, "BankingService.CancelCreditCardByID")
+	defer span.End()
+
+	card, err := s.store.GetCreditCard(ctx, "", cardID)
+	if err != nil {
+		return err
+	}
+	if card.Status == "cancelled" {
+		return &domain.ErrValidation{Field: "status", Message: "card is already cancelled"}
+	}
+
+	return s.store.UpdateCreditCardStatus(ctx, cardID, "cancelled")
+}
+
 // BlockCreditCardByID blocks a card using only the cardID (no customerID filter).
 func (s *BankingService) BlockCreditCardByID(ctx context.Context, cardID string) error {
 	ctx, span := bankTracer.Start(ctx, "BankingService.BlockCreditCardByID")

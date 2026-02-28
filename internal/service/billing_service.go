@@ -243,6 +243,11 @@ func (s *BankingService) CreateDebitPurchase(ctx context.Context, customerID str
 		return nil, &domain.ErrValidation{Field: "merchantName", Message: "required"}
 	}
 
+	// Default category when frontend doesn't send one (category is now optional)
+	if req.Category == "" {
+		req.Category = "other"
+	}
+
 	// Get primary account and check balance
 	account, err := s.store.GetPrimaryAccount(ctx, customerID)
 	if err != nil {

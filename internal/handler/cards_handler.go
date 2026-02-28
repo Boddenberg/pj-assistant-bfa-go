@@ -223,6 +223,20 @@ func cardUnblockHandler(bankSvc *service.BankingService, logger *zap.Logger) htt
 	}
 }
 
+func cardCancelHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "POST /v1/cards/{cardId}/cancel")
+		defer span.End()
+
+		cardID := chi.URLParam(r, "cardId")
+		if err := bankSvc.CancelCreditCardByID(ctx, cardID); err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // ============================================================
 // Invoice Payment Handler
 // ============================================================

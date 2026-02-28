@@ -99,8 +99,10 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Get("/cards/{cardId}/invoices/{month}", cardInvoiceByMonthHandler(bankSvc, logger))
 		r.Post("/cards/{cardId}/block", cardBlockHandler(bankSvc, logger))
 		r.Post("/cards/{cardId}/unblock", cardUnblockHandler(bankSvc, logger))
+		r.Post("/cards/{cardId}/cancel", cardCancelHandler(bankSvc, logger))
 		r.Post("/customers/{customerId}/credit-cards/{cardId}/block", cardBlockHandler(bankSvc, logger))
 		r.Post("/customers/{customerId}/credit-cards/{cardId}/unblock", cardUnblockHandler(bankSvc, logger))
+		r.Post("/customers/{customerId}/credit-cards/{cardId}/cancel", cardCancelHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/credit-cards/{cardId}/invoice", cardInvoiceCurrentHandler(bankSvc, logger))
 
 		// =============================================
@@ -153,6 +155,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Post("/dev/set-credit-limit", devSetCreditLimitHandler(bankSvc, logger))
 		r.Post("/dev/generate-transactions", devGenerateTransactionsHandler(bankSvc, logger))
 		r.Post("/dev/add-card-purchase", devAddCardPurchaseHandler(bankSvc, logger))
+		r.Post("/dev/card-purchase", devAddCardPurchaseHandler(bankSvc, logger))
 
 		// =============================================
 		// 9. Autenticação

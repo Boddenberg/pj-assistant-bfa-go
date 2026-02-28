@@ -132,7 +132,7 @@ type DebitPurchaseRequest struct {
 	CustomerID   string  `json:"customerId"`
 	MerchantName string  `json:"merchantName"`
 	Amount       float64 `json:"amount"`
-	Category     string  `json:"category"`
+	Category     string  `json:"category,omitempty"`
 	Description  string  `json:"description,omitempty"`
 }
 
