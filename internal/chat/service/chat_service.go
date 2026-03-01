@@ -72,6 +72,10 @@ type ChatService struct {
 	// Quando uma nova strategy é criada, basta registrá-la aqui.
 	strategies []ChatStrategy
 
+	// maxHistory é o número máximo de entradas de histórico enviadas ao agent.
+	// Controlado pela variável de ambiente CHAT_MAX_HISTORY (default: 5).
+	maxHistory int
+
 	// logger para logging estruturado
 	logger *zap.Logger
 }
@@ -83,11 +87,16 @@ type ChatService struct {
 func NewChatService(
 	agentClient port.ChatAgentCaller,
 	strategies []ChatStrategy,
+	maxHistory int,
 	logger *zap.Logger,
 ) *ChatService {
+	if maxHistory <= 0 {
+		maxHistory = 5
+	}
 	return &ChatService{
 		agentClient: agentClient,
 		strategies:  strategies,
+		maxHistory:  maxHistory,
 		logger:      logger,
 	}
 }
@@ -115,16 +124,24 @@ func (s *ChatService) ProcessMessage(ctx context.Context, customerID string, req
 		zap.Int("query_length", len(req.Query)),
 	)
 
-	// Passo 2: Monta o contexto que a strategy vai receber
+	// Passo 2: Trunca o histórico para no máximo maxHistory entradas.
+	// O frontend pode mandar N entradas, mas só repassamos as últimas
+	// para economizar tokens e manter a janela de contexto sob controle.
+	history := req.History
+	if len(history) > s.maxHistory {
+		history = history[len(history)-s.maxHistory:]
+	}
+
+	// Passo 3: Monta o contexto que a strategy vai receber
 	chatCtx := &domain.ChatContext{
 		CustomerID:     customerID,
 		Query:          req.Query,
 		DetectedIntent: intent,
-		History:        req.History,
+		History:        history,
 		Journey:        nil, // futuro: buscar journey state do banco/cache
 	}
 
-	// Passo 3: Procura uma strategy registrada que aceite o intent
+	// Passo 4: Procura uma strategy registrada que aceite o intent
 	for _, strategy := range s.strategies {
 		if strategy.CanHandle(intent) {
 			s.logger.Debug("delegating to strategy",
@@ -134,7 +151,7 @@ func (s *ChatService) ProcessMessage(ctx context.Context, customerID string, req
 		}
 	}
 
-	// Passo 4: Nenhuma strategy encontrada → usa a default
+	// Passo 5: Nenhuma strategy encontrada → usa a default
 	// A default simplesmente repassa a query direto pro agent
 	s.logger.Debug("no strategy matched, using default agent call",
 		zap.String("intent", intent),

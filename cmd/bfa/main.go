@@ -137,9 +137,10 @@ func main() {
 		onboardingStrategy, // intent "onboarding" → abertura de conta
 		// Futuro: pixStrategy, balanceStrategy, etc.
 	}
-	chatSvc := chatservice.NewChatService(chatAgentClient, chatStrategies, logger)
+	chatSvc := chatservice.NewChatService(chatAgentClient, chatStrategies, cfg.MaxChatHistory, logger)
 	logger.Info("chat service enabled with strategies",
 		zap.Int("strategies_count", len(chatStrategies)),
+		zap.Int("max_chat_history", cfg.MaxChatHistory),
 	)
 
 	// --- Router ---
