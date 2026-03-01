@@ -77,3 +77,47 @@ class AgentState(BaseModel):
     # Metrics
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
     errors: list[str] = Field(default_factory=list)
+
+
+# ============================================================
+# Chat — contrato simples usado pela rota POST /v1/chat
+# ============================================================
+
+
+class ChatHistoryEntry(BaseModel):
+    """Uma troca de mensagem anterior na conversa."""
+
+    query: str
+    answer: str
+
+
+class ChatRequest(BaseModel):
+    """Request do BFA (Go) via POST /v1/chat."""
+
+    query: str
+    customer_id: str = "anonymous"
+    context: str = ""
+    history: list[ChatHistoryEntry] = Field(default_factory=list)
+    journey_state: dict | None = None
+
+
+class ChatMetadata(BaseModel):
+    """Metadata interna do processamento (não exposta ao frontend)."""
+
+    reasoning: list[str] = Field(default_factory=list)
+    sources: list[str] = Field(default_factory=list)
+    tokens_used: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+class ChatResponse(BaseModel):
+    """Response devolvida ao BFA (Go)."""
+
+    customer_id: str = ""
+    answer: str
+    context: str = ""
+    intent: str = ""
+    confidence: float = 0.0
+    suggested_actions: list[str] = Field(default_factory=list)
+    metadata: ChatMetadata = Field(default_factory=ChatMetadata)
+    timestamp: str = ""
