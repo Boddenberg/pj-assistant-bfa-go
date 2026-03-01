@@ -78,10 +78,10 @@ func newBetterstackCore(cfg betterstackConfig) *betterstackCore {
 	}
 
 	core := &betterstackCore{
-		token:         cfg.Token,
-		endpoint:      cfg.Endpoint,
-		level:         cfg.Level,
-		client:        &http.Client{Timeout: 10 * time.Second},
+		token:    cfg.Token,
+		endpoint: cfg.Endpoint,
+		level:    cfg.Level,
+		client:   &http.Client{Timeout: 10 * time.Second},
 		shared: &betterstackShared{
 			buffer: make([]map[string]interface{}, 0, cfg.MaxBatchSize),
 			ticker: time.NewTicker(cfg.FlushInterval),
