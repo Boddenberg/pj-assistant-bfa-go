@@ -1,15 +1,19 @@
-# 📘 Tutorial — Rota GET /v1/assistant/{customerId} (Chat com IA)
+# 📘 Tutorial — Rota POST /v1/chat/{customerId} (Chat com IA)
 
 ## Visão Geral
 
-A rota `GET /v1/assistant/{customerId}` é a **porta de entrada do chat com IA** no BFA.
+A rota `POST /v1/chat/{customerId}` é a **porta de entrada do chat com IA** no BFA.
 Ela permite que qualquer frontend/chatbot envie uma mensagem em linguagem natural
 e receba uma resposta da IA, tudo de forma simples e leve.
 
+> **Por que POST e não GET?** Proxies reversos (Railway, CloudFlare, etc.)
+> removem o body de requisições GET, causando erro 400/500 em produção.
+> POST é o método correto para enviar dados.
+
 ```
-┌──────────┐    GET /v1/assistant/{id}     ┌────────┐   POST /v1/chat    ┌────────────────┐
-│ Frontend │ ─────────────────────────────→ │  BFA   │ ─────────────────→ │ Agent Python   │
-│ Chatbot  │ ←───────────────────────────── │ (Go)   │ ←───────────────── │ (LangGraph)    │
+┌──────────┐    POST /v1/chat/{id}      ┌────────┐   POST /v1/chat    ┌────────────────┐
+│ Frontend │ ─────────────────────────→ │  BFA   │ ─────────────────→ │ Agent Python   │
+│ Chatbot  │ ←───────────────────────── │ (Go)   │ ←───────────────── │ (LangGraph)    │
 └──────────┘    {"answer": "..."}          └────────┘   {"answer":"..."}  └────────────────┘
 ```
 
@@ -20,8 +24,8 @@ e receba uma resposta da IA, tudo de forma simples e leve.
 ### Request
 
 ```bash
-curl -X GET \
-  https://pj-assistant-bfa-go-production.up.railway.app/v1/assistant/ab84533a-9589-41e1-b503-50cdc9cb9860 \
+curl -X POST \
+  https://pj-assistant-bfa-go-production.up.railway.app/v1/chat/ab84533a-9589-41e1-b503-50cdc9cb9860 \
   -H "Content-Type: application/json" \
   -d '{"query": "Quero abrir uma conta PJ"}'
 ```
@@ -102,20 +106,18 @@ O coração da rota é o **Strategy Pattern** para routing de contexto:
 ### Novos
 
 | Arquivo | Descrição |
-|---------|-----------|
-| `internal/domain/chat.go` | Tipos de domínio: ChatRequest, ChatResponse, ChatAgentRequest, ChatAgentResponse, JourneyState, ChatContext |
-| `internal/port/chat_port.go` | Interface `ChatAgentCaller` — port para o agent client |
-| `internal/infra/client/chat_agent.go` | Client HTTP que chama `POST /v1/chat` no Agent Python (com circuit breaker + retry) |
-| `internal/service/chat_service.go` | ChatService — orquestrador com Strategy Pattern e detecção de intent |
-| `internal/service/chat_strategy_onboarding.go` | OnboardingStrategy — strategy para abertura de conta PJ |
-| `internal/handler/chat_handler.go` | Handler HTTP para `GET /v1/assistant/{customerId}` |
-
-### Modificados
+|---------|-----------|  
+| `internal/chat/domain/chat.go` | Tipos de domínio: ChatRequest, ChatResponse, ChatAgentRequest, ChatAgentResponse, JourneyState, ChatContext |
+| `internal/chat/port/chat_port.go` | Interface `ChatAgentCaller` — port para o agent client |
+| `internal/chat/infra/chat_agent.go` | Client HTTP que chama `POST /v1/chat` no Agent Python (com circuit breaker + retry) |
+| `internal/chat/service/chat_service.go` | ChatService — orquestrador com Strategy Pattern e detecção de intent |
+| `internal/chat/service/chat_strategy_onboarding.go` | OnboardingStrategy — strategy para abertura de conta PJ |
+| `internal/chat/handler/chat_handler.go` | Handler HTTP para `POST /v1/chat/{customerId}` |### Modificados
 
 | Arquivo | O que mudou |
 |---------|-------------|
 | `internal/config/config.go` | Adicionado campo `ChatAgentURL` (env: `CHAT_AGENT_URL`) |
-| `internal/handler/router.go` | Adicionado parâmetro `chatSvc` e rota `r.Get("/assistant/{customerId}", ...)` |
+| `internal/handler/router.go` | Adicionado parâmetro `chatSvc` e rota `r.Post("/chat/{customerId}", ...)` |
 | `cmd/bfa/main.go` | Wiring: ChatAgentClient → OnboardingStrategy → ChatService → Router |
 
 ---
@@ -177,9 +179,9 @@ São 3 etapas, que correspondem aos campos do `RegisterRequest`:
 
 ## Diferença entre as Rotas de Assistant
 
-| Aspecto | POST /v1/assistant/{id} | GET /v1/assistant/{id} |
-|---------|------------------------|----------------------|
-| **Método** | POST | GET |
+| Aspecto | POST /v1/assistant/{id} | POST /v1/chat/{id} |
+|---------|------------------------|--------------------|
+| **Método** | POST | POST |
 | **Input** | `{"message": "...", "conversationId": "..."}` | `{"query": "..."}` |
 | **O que faz** | Busca profile + transactions + chama agent | Strategy routing + chama agent |
 | **Agent endpoint** | `POST /v1/agent/invoke` | `POST /v1/chat` |
@@ -195,7 +197,7 @@ Para adicionar suporte a um novo contexto (ex: PIX):
 ### 1. Criar o arquivo da strategy
 
 ```go
-// internal/service/chat_strategy_pix.go
+// internal/chat/service/chat_strategy_pix.go
 package service
 
 type PixStrategy struct {
@@ -237,7 +239,7 @@ Usuário          Frontend         BFA (Go)           Agent Python
   │ "Quero abrir    │                │                    │
   │  uma conta PJ"  │                │                    │
   │ ───────────────→│                │                    │
-  │                 │ GET /v1/assistant/{id}              │
+  │                 │ POST /v1/chat/{id}                 │
   │                 │ {"query":"Quero abrir..."}          │
   │                 │ ──────────────→│                    │
   │                 │                │                    │
@@ -273,16 +275,17 @@ Usuário          Frontend         BFA (Go)           Agent Python
 go run cmd/bfa/main.go
 
 # 2. Teste a rota de chat
-curl -s -X GET \
-  http://localhost:8080/v1/assistant/ab84533a-9589-41e1-b503-50cdc9cb9860 \
+curl -s -X POST \
+  http://localhost:8080/v1/chat/ab84533a-9589-41e1-b503-50cdc9cb9860 \
   -H "Content-Type: application/json" \
   -d '{"query": "Como abrir uma conta PJ?"}' | jq .
 
 # 3. Teste com query genérica (vai pro fallback/default)
-curl -s -X GET \
-  http://localhost:8080/v1/assistant/ab84533a-9589-41e1-b503-50cdc9cb9860 \
+curl -s -X POST \
+  http://localhost:8080/v1/chat/ab84533a-9589-41e1-b503-50cdc9cb9860 \
   -H "Content-Type: application/json" \
   -d '{"query": "Quais são as taxas do banco?"}' | jq .
+```
 ```
 
 ---

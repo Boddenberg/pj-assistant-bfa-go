@@ -49,16 +49,17 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Post("/assistant/{customerId}", assistantHandler(svc, logger))
 
 		// =============================================
-		// 1a. Chat IA (GET) — nova rota leve com Strategy Pattern
+		// 1a. Chat IA (POST) — rota leve com Strategy Pattern
 		// =============================================
-		// Rota: GET /v1/assistant/{customerId}
+		// Rota: POST /v1/chat/{customerId}
 		// Body: {"query": "Quero abrir uma conta PJ"}
 		// Resp: {"answer": "Olá! Vou te ajudar..."}
 		//
-		// Diferente do POST acima (que busca profile+transactions+agent),
-		// o GET é leve: recebe query → strategy routing → agent → answer.
+		// Diferente do POST /v1/assistant (que busca profile+transactions+agent),
+		// o POST /v1/chat é leve: recebe query → strategy routing → agent → answer.
+		// Usamos POST (não GET) porque proxies removem body de GET requests.
 		if chatSvc != nil {
-			r.Get("/assistant/{customerId}", chathandler.ChatGetHandler(chatSvc, logger))
+			r.Post("/chat/{customerId}", chathandler.ChatHandler(chatSvc, logger))
 		}
 
 		// =============================================

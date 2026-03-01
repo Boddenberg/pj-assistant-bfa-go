@@ -1,5 +1,5 @@
 // Package handler — chat_handler.go implementa o handler da rota
-// GET /v1/assistant/{customerId} — a entrada do chat com IA.
+// POST /v1/chat/{customerId} — a entrada do chat com IA.
 //
 // ============================================================
 // DIFERENÇA ENTRE AS ROTAS DE ASSISTANT
@@ -10,13 +10,15 @@
 //   - Manda tudo pro Agent (POST /v1/agent/invoke)
 //   - Resposta com metadata completa (tokens, tools, reasoning)
 //
-// GET /v1/assistant/{customerId}   →  rota "leve" (nova)
-//   - Recebe body simples: {"query": "..."}
+// POST /v1/chat/{customerId}       →  rota "leve" (nova)
+//   - Recebe body JSON: {"query": "..."}
 //   - Usa Strategy Pattern para rotear o contexto
 //   - Chama Agent Python (POST /v1/chat)
 //   - Retorna apenas: {"answer": "..."}
 //
-// A rota GET é a que o frontend/chatbot deve usar para conversas.
+// A rota POST /v1/chat/{customerId} é a que o frontend/chatbot deve usar.
+// Usamos POST (e não GET) porque proxies (Railway, CloudFlare) removem
+// o body de requisições GET, causando erro 400/500 em produção.
 package handler
 
 import (
@@ -37,14 +39,14 @@ import (
 var tracer = otel.Tracer("chat/handler")
 
 // ============================================================
-// ChatGetHandler — GET /v1/assistant/{customerId}
+// ChatHandler — POST /v1/chat/{customerId}
 // ============================================================
 
-// ChatGetHandler retorna o http.HandlerFunc para a rota GET /v1/assistant/{customerId}.
+// ChatHandler retorna o http.HandlerFunc para a rota POST /v1/chat/{customerId}.
 //
 // Request:
 //
-//	GET /v1/assistant/ab84533a-9589-41e1-b503-50cdc9cb9860
+//	POST /v1/chat/ab84533a-9589-41e1-b503-50cdc9cb9860
 //	Content-Type: application/json
 //	Body: {"query": "Quero abrir uma conta PJ"}
 //
@@ -55,10 +57,13 @@ var tracer = otel.Tracer("chat/handler")
 // O handler é fino — só faz validação básica e delega pro ChatService.
 // Toda a lógica de negócio (intent detection, strategy routing, agent call)
 // fica no service layer.
-func ChatGetHandler(chatSvc *service.ChatService, logger *zap.Logger) http.HandlerFunc {
+//
+// NOTA: usamos POST em vez de GET porque proxies reversos (Railway, CloudFlare)
+// removem o body de requisições GET, causando erro em produção.
+func ChatHandler(chatSvc *service.ChatService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Inicia o span de tracing para essa rota
-		ctx, span := tracer.Start(r.Context(), "GET /v1/assistant/{customerId}")
+		ctx, span := tracer.Start(r.Context(), "POST /v1/chat/{customerId}")
 		defer span.End()
 
 		// Extrai o customerId da URL.
