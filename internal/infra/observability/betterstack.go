@@ -34,16 +34,24 @@ type betterstackCore struct {
 	client   *http.Client
 	level    zapcore.Level
 
-	// Buffer e sincronização
-	mu      sync.Mutex
-	buffer  []map[string]interface{}
-	ticker  *time.Ticker
-	done    chan struct{}
-	fields  []zapcore.Field // campos fixos adicionados via With()
+	// Buffer e sincronização (compartilhados entre clones via With())
+	shared *betterstackShared
+
+	// campos fixos adicionados via With()
+	fields []zapcore.Field
 
 	// Batching
-	maxBatchSize int
+	maxBatchSize  int
 	flushInterval time.Duration
+}
+
+// betterstackShared contém estado mutável compartilhado entre o core
+// original e seus clones criados por With().
+type betterstackShared struct {
+	mu     sync.Mutex
+	buffer []map[string]interface{}
+	ticker *time.Ticker
+	done   chan struct{}
 }
 
 // betterstackConfig contém as opções de configuração do Better Stack core.
@@ -74,9 +82,11 @@ func newBetterstackCore(cfg betterstackConfig) *betterstackCore {
 		endpoint:      cfg.Endpoint,
 		level:         cfg.Level,
 		client:        &http.Client{Timeout: 10 * time.Second},
-		buffer:        make([]map[string]interface{}, 0, cfg.MaxBatchSize),
-		ticker:        time.NewTicker(cfg.FlushInterval),
-		done:          make(chan struct{}),
+		shared: &betterstackShared{
+			buffer: make([]map[string]interface{}, 0, cfg.MaxBatchSize),
+			ticker: time.NewTicker(cfg.FlushInterval),
+			done:   make(chan struct{}),
+		},
 		maxBatchSize:  cfg.MaxBatchSize,
 		flushInterval: cfg.FlushInterval,
 	}
@@ -91,9 +101,9 @@ func newBetterstackCore(cfg betterstackConfig) *betterstackCore {
 func (c *betterstackCore) flushLoop() {
 	for {
 		select {
-		case <-c.ticker.C:
+		case <-c.shared.ticker.C:
 			c.flush()
-		case <-c.done:
+		case <-c.shared.done:
 			c.flush() // flush final antes de parar
 			return
 		}
@@ -107,21 +117,16 @@ func (c *betterstackCore) Enabled(level zapcore.Level) bool {
 
 // With implementa zapcore.Core — retorna um core com campos adicionais.
 func (c *betterstackCore) With(fields []zapcore.Field) zapcore.Core {
-	clone := &betterstackCore{
+	return &betterstackCore{
 		token:         c.token,
 		endpoint:      c.endpoint,
 		client:        c.client,
 		level:         c.level,
-		buffer:        c.buffer,
-		ticker:        c.ticker,
-		done:          c.done,
+		shared:        c.shared, // ponteiro — compartilha buffer e mutex
 		maxBatchSize:  c.maxBatchSize,
 		flushInterval: c.flushInterval,
 		fields:        append(c.fields[:len(c.fields):len(c.fields)], fields...),
 	}
-	// Compartilha o mesmo mutex para o buffer
-	clone.mu = c.mu
-	return clone
 }
 
 // Check implementa zapcore.Core.
@@ -160,10 +165,10 @@ func (c *betterstackCore) Write(entry zapcore.Entry, fields []zapcore.Field) err
 		logEntry[k] = v
 	}
 
-	c.mu.Lock()
-	c.buffer = append(c.buffer, logEntry)
-	shouldFlush := len(c.buffer) >= c.maxBatchSize
-	c.mu.Unlock()
+	c.shared.mu.Lock()
+	c.shared.buffer = append(c.shared.buffer, logEntry)
+	shouldFlush := len(c.shared.buffer) >= c.maxBatchSize
+	c.shared.mu.Unlock()
 
 	if shouldFlush {
 		go c.flush()
@@ -175,23 +180,28 @@ func (c *betterstackCore) Write(entry zapcore.Entry, fields []zapcore.Field) err
 // Sync implementa zapcore.Core — faz flush do buffer.
 func (c *betterstackCore) Sync() error {
 	c.flush()
-	close(c.done)
-	c.ticker.Stop()
+	select {
+	case <-c.shared.done:
+		// já fechado
+	default:
+		close(c.shared.done)
+	}
+	c.shared.ticker.Stop()
 	return nil
 }
 
 // flush envia os logs do buffer para o Better Stack via HTTP POST.
 func (c *betterstackCore) flush() {
-	c.mu.Lock()
-	if len(c.buffer) == 0 {
-		c.mu.Unlock()
+	c.shared.mu.Lock()
+	if len(c.shared.buffer) == 0 {
+		c.shared.mu.Unlock()
 		return
 	}
 	// Copia e limpa o buffer
-	batch := make([]map[string]interface{}, len(c.buffer))
-	copy(batch, c.buffer)
-	c.buffer = c.buffer[:0]
-	c.mu.Unlock()
+	batch := make([]map[string]interface{}, len(c.shared.buffer))
+	copy(batch, c.shared.buffer)
+	c.shared.buffer = c.shared.buffer[:0]
+	c.shared.mu.Unlock()
 
 	// Serializa como JSON array
 	body, err := json.Marshal(batch)
