@@ -16,17 +16,25 @@ package domain
 // Chat — Request/Response entre o chamador e o BFA
 // ============================================================
 
-// ChatRequest é o body que o chamador envia no GET /v1/assistant/{customerId}.
-// Por enquanto é só uma string — o prompt do usuário.
+// HistoryEntry representa uma troca de mensagem anterior na conversa.
+type HistoryEntry struct {
+	Query  string `json:"query"`
+	Answer string `json:"answer"`
+}
+
+// ChatRequest é o body que o chamador envia no POST /v1/chat.
 type ChatRequest struct {
-	Query string `json:"query"`
+	Query   string         `json:"query"`
+	History []HistoryEntry `json:"history,omitempty"`
 }
 
 // ChatResponse é o que o BFA devolve pro chamador.
-// Por ora, somente a string de resposta da IA.
-// No futuro pode crescer para incluir metadata, sources, etc.
 type ChatResponse struct {
-	Answer string `json:"answer"`
+	Answer           string   `json:"answer"`
+	Context          string   `json:"context,omitempty"`
+	Intent           string   `json:"intent,omitempty"`
+	Confidence       float64  `json:"confidence,omitempty"`
+	SuggestedActions []string `json:"suggested_actions,omitempty"`
 }
 
 // ============================================================
@@ -52,6 +60,9 @@ type ChatAgentRequest struct {
 	// O agent pode usar isso para ajustar o comportamento.
 	Context string `json:"context,omitempty"`
 
+	// History é o histórico da conversa para manter contexto entre turnos.
+	History []HistoryEntry `json:"history,omitempty"`
+
 	// JourneyState é o estado atual da jornada (ex: abertura de conta).
 	// O agent usa isso para saber em que etapa o usuário está.
 	JourneyState *JourneyState `json:"journey_state,omitempty"`
@@ -61,21 +72,37 @@ type ChatAgentRequest struct {
 // Baseado no contrato real do agent:
 //
 //	{
-//	  "customer_id": "cust-001",
-//	  "answer": "Oi! Olhando seus números...",
-//	  "reasoning": [...],
-//	  "sources": ["01_conta_pj.md"],
-//	  "tokens_used": 1250,
-//	  "estimated_cost_usd": 0.0019,
-//	  "timestamp": "2026-03-01T14:30:00"
+//	  "customer_id": "ab84533a-...",
+//	  "answer": "Como já conversamos, além do CNPJ...",
+//	  "context": "onboarding",
+//	  "intent": "open_account",
+//	  "confidence": 0.95,
+//	  "suggested_actions": ["Iniciar abertura", ...],
+//	  "metadata": {
+//	    "reasoning": [...],
+//	    "sources": ["kb: abertura_conta"],
+//	    "tokens_used": 1200,
+//	    "estimated_cost_usd": 0.00018
+//	  },
+//	  "timestamp": "2026-03-01T15:30:00.000000"
 //	}
 type ChatAgentResponse struct {
-	CustomerID string   `json:"customer_id"`
-	Answer     string   `json:"answer"`
+	CustomerID       string         `json:"customer_id"`
+	Answer           string         `json:"answer"`
+	Context          string         `json:"context,omitempty"`
+	Intent           string         `json:"intent,omitempty"`
+	Confidence       float64        `json:"confidence,omitempty"`
+	SuggestedActions []string       `json:"suggested_actions,omitempty"`
+	Metadata         *AgentMetadata `json:"metadata,omitempty"`
+	Timestamp        string         `json:"timestamp"`
+}
+
+// AgentMetadata contém informações internas do processamento do Agent.
+type AgentMetadata struct {
+	Reasoning  []string `json:"reasoning,omitempty"`
 	Sources    []string `json:"sources,omitempty"`
-	TokensUsed int      `json:"tokens_used"`
-	EstCostUSD float64  `json:"estimated_cost_usd"`
-	Timestamp  string   `json:"timestamp"`
+	TokensUsed int      `json:"tokens_used,omitempty"`
+	EstCostUSD float64  `json:"estimated_cost_usd,omitempty"`
 }
 
 // ============================================================
@@ -127,6 +154,9 @@ type ChatContext struct {
 	// DetectedIntent é a intenção detectada pelo roteador.
 	// Exemplos: "onboarding", "pix", "balance", "general"
 	DetectedIntent string
+
+	// History é o histórico da conversa vindo do frontend
+	History []HistoryEntry
 
 	// Journey é o estado da jornada em andamento (nil se não houver)
 	Journey *JourneyState

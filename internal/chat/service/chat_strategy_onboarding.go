@@ -113,6 +113,7 @@ func (s *OnboardingStrategy) Handle(ctx context.Context, chatCtx *domain.ChatCon
 		Query:      chatCtx.Query,
 		CustomerID: chatCtx.CustomerID,
 		Context:    "onboarding",
+		History:    chatCtx.History,
 	}
 
 	// Se já existe uma jornada em andamento, inclui o state.
@@ -142,11 +143,14 @@ func (s *OnboardingStrategy) Handle(ctx context.Context, chatCtx *domain.ChatCon
 
 	s.logger.Info("onboarding agent response received",
 		zap.String("customer_id", chatCtx.CustomerID),
-		zap.Int("tokens_used", agentResp.TokensUsed),
 	)
 
-	// Retorna somente a answer string
+	// Monta a resposta para o chamador
 	return &domain.ChatResponse{
-		Answer: agentResp.Answer,
+		Answer:           agentResp.Answer,
+		Context:          agentResp.Context,
+		Intent:           agentResp.Intent,
+		Confidence:       agentResp.Confidence,
+		SuggestedActions: agentResp.SuggestedActions,
 	}, nil
 }

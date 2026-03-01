@@ -120,6 +120,7 @@ func (s *ChatService) ProcessMessage(ctx context.Context, customerID string, req
 		CustomerID:     customerID,
 		Query:          req.Query,
 		DetectedIntent: intent,
+		History:        req.History,
 		Journey:        nil, // futuro: buscar journey state do banco/cache
 	}
 
@@ -149,6 +150,7 @@ func (s *ChatService) defaultHandle(ctx context.Context, chatCtx *domain.ChatCon
 		Query:      chatCtx.Query,
 		CustomerID: chatCtx.CustomerID,
 		Context:    "general",
+		History:    chatCtx.History,
 	}
 
 	// Chama o Agent Python
@@ -161,9 +163,13 @@ func (s *ChatService) defaultHandle(ctx context.Context, chatCtx *domain.ChatCon
 		return nil, err
 	}
 
-	// Retorna somente a string answer
+	// Monta a resposta para o chamador
 	return &domain.ChatResponse{
-		Answer: agentResp.Answer,
+		Answer:           agentResp.Answer,
+		Context:          agentResp.Context,
+		Intent:           agentResp.Intent,
+		Confidence:       agentResp.Confidence,
+		SuggestedActions: agentResp.SuggestedActions,
 	}, nil
 }
 
