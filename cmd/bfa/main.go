@@ -32,7 +32,7 @@ func main() {
 	cfg := config.Load()
 
 	// --- Logger ---
-	logger := observability.NewLogger(cfg.LogLevel)
+	logger := observability.NewLogger(cfg.LogLevel, cfg.BetterStackToken, cfg.BetterStackURL)
 	defer logger.Sync()
 
 	logger.Info("configuration loaded",

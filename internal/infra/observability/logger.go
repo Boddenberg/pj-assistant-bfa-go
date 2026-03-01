@@ -14,20 +14,39 @@ import (
 // NewLogger creates a structured zap logger.
 // Always uses production base (no stacktraces on Warn).
 // debug level → colorized console; otherwise → compact JSON.
-func NewLogger(level string) *zap.Logger {
+// If betterStackToken is provided, logs are also sent to Better Stack.
+func NewLogger(level string, betterStackToken, betterStackURL string) *zap.Logger {
 	cfg := zap.NewProductionConfig()
 	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
+	var zapLevel zapcore.Level
 	if level == "debug" {
+		zapLevel = zapcore.DebugLevel
 		cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 		cfg.Encoding = "console"
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	} else {
+		zapLevel = zapcore.InfoLevel
 	}
 
 	logger, err := cfg.Build()
 	if err != nil {
 		panic("failed to create logger: " + err.Error())
 	}
+
+	// Se Better Stack configurado, adiciona core extra (tee)
+	if betterStackToken != "" && betterStackURL != "" {
+		bsCore := newBetterstackCore(betterstackConfig{
+			Token:    betterStackToken,
+			Endpoint: betterStackURL,
+			Level:    zapLevel,
+		})
+		if bsCore != nil {
+			teeCore := zapcore.NewTee(logger.Core(), bsCore)
+			logger = zap.New(teeCore, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+		}
+	}
+
 	return logger
 }
 

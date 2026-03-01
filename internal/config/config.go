@@ -33,6 +33,10 @@ type Config struct {
 	// Observability
 	OTLPEndpoint string
 
+	// Better Stack (logs)
+	BetterStackToken string // BETTERSTACK_SOURCE_TOKEN
+	BetterStackURL   string // BETTERSTACK_INGEST_URL
+
 	// Supabase
 	SupabaseURL        string
 	SupabaseAnonKey    string
@@ -71,6 +75,9 @@ func Load() *Config {
 		CacheTTL: getEnvDuration("CACHE_TTL", 5*time.Minute),
 
 		OTLPEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
+
+		BetterStackToken: getEnv("BETTERSTACK_SOURCE_TOKEN", ""),
+		BetterStackURL:   getEnv("BETTERSTACK_INGEST_URL", ""),
 
 		SupabaseURL:        getEnv("SUPABASE_URL", ""),
 		SupabaseAnonKey:    getEnv("SUPABASE_ANON_KEY", ""),
