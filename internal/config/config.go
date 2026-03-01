@@ -17,6 +17,7 @@ type Config struct {
 	ProfileAPIURL      string
 	TransactionsAPIURL string
 	AgentAPIURL        string
+	ChatAgentURL       string // URL do Agent Python para o chat (POST /v1/chat)
 
 	// HTTP client
 	HTTPTimeout time.Duration
@@ -56,6 +57,7 @@ func Load() *Config {
 		ProfileAPIURL:      getEnv("PROFILE_API_URL", "http://localhost:8081"),
 		TransactionsAPIURL: getEnv("TRANSACTIONS_API_URL", "http://localhost:8082"),
 		AgentAPIURL:        getEnv("AGENT_API_URL", "http://localhost:8090"),
+		ChatAgentURL:       getEnv("CHAT_AGENT_URL", "https://pj-assistant-agent-py-production.up.railway.app"),
 
 		HTTPTimeout: getEnvDuration("HTTP_TIMEOUT", 10*time.Second),
 

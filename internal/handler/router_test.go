@@ -12,7 +12,7 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
-	router := handler.NewRouter(nil, nil, nil, observability.NewMetrics(), zap.NewNop())
+	router := handler.NewRouter(nil, nil, nil, nil, observability.NewMetrics(), zap.NewNop())
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -25,7 +25,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestReadyz(t *testing.T) {
-	router := handler.NewRouter(nil, nil, nil, observability.NewMetrics(), zap.NewNop())
+	router := handler.NewRouter(nil, nil, nil, nil, observability.NewMetrics(), zap.NewNop())
 
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rec := httptest.NewRecorder()
@@ -38,7 +38,7 @@ func TestReadyz(t *testing.T) {
 }
 
 func TestMetrics(t *testing.T) {
-	router := handler.NewRouter(nil, nil, nil, observability.NewMetrics(), zap.NewNop())
+	router := handler.NewRouter(nil, nil, nil, nil, observability.NewMetrics(), zap.NewNop())
 
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()

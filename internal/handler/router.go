@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	chathandler "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/handler"
+	chatservice "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/service"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/observability"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/service"
@@ -19,7 +21,10 @@ var tracer = otel.Tracer("handler")
 
 // NewRouter creates the HTTP router with all routes and middleware.
 // Routes follow the API contract defined for the PJ Assistant frontend.
-func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
+//
+// O parâmetro chatSvc é opcional (pode ser nil). Quando presente,
+// a rota GET /v1/assistant/{customerId} fica disponível para chat com IA.
+func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatSvc *chatservice.ChatService, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	// --- Middleware ---
@@ -42,6 +47,19 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// 1. Assistente IA
 		// =============================================
 		r.Post("/assistant/{customerId}", assistantHandler(svc, logger))
+
+		// =============================================
+		// 1a. Chat IA (GET) — nova rota leve com Strategy Pattern
+		// =============================================
+		// Rota: GET /v1/assistant/{customerId}
+		// Body: {"query": "Quero abrir uma conta PJ"}
+		// Resp: {"answer": "Olá! Vou te ajudar..."}
+		//
+		// Diferente do POST acima (que busca profile+transactions+agent),
+		// o GET é leve: recebe query → strategy routing → agent → answer.
+		if chatSvc != nil {
+			r.Get("/assistant/{customerId}", chathandler.ChatGetHandler(chatSvc, logger))
+		}
 
 		// =============================================
 		// 1b. Chat (alias for assistant)

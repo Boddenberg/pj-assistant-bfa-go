@@ -81,7 +81,7 @@ func TestIntegration_FullFlow(t *testing.T) {
 		logger,
 	)
 
-	router := handler.NewRouter(svc, nil, nil, metrics, logger)
+	router := handler.NewRouter(svc, nil, nil, nil, metrics, logger)
 
 	// --- Execute request ---
 	body, _ := json.Marshal(domain.AssistantRequest{Message: "What is my financial status?"})
@@ -153,7 +153,7 @@ func TestIntegration_ProfileNotFound(t *testing.T) {
 		logger,
 	)
 
-	router := handler.NewRouter(svc, nil, nil, metrics, logger)
+	router := handler.NewRouter(svc, nil, nil, nil, metrics, logger)
 
 	body, _ := json.Marshal(domain.AssistantRequest{Message: "test"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/assistant/nonexistent", bytes.NewReader(body))

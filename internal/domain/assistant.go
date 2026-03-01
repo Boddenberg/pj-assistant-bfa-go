@@ -3,10 +3,10 @@ package domain
 import "time"
 
 // ============================================================
-// AI Agent
+// Agente IA
 // ============================================================
 
-// AgentRequest is sent to the AI Agent service.
+// AgentRequest é o payload enviado para o serviço do Agente IA.
 type AgentRequest struct {
 	CustomerID   string              `json:"customer_id"`
 	Profile      *CustomerProfile    `json:"profile"`
@@ -15,7 +15,7 @@ type AgentRequest struct {
 	Query        string              `json:"query,omitempty"`
 }
 
-// AgentResponse holds the AI Agent's structured response.
+// AgentResponse contém a resposta estruturada do Agente IA.
 type AgentResponse struct {
 	Answer        string     `json:"answer"`
 	Reasoning     string     `json:"reasoning"`
@@ -25,7 +25,7 @@ type AgentResponse struct {
 	ToolsExecuted []string   `json:"tools_executed,omitempty"`
 }
 
-// TokenUsage tracks LLM token consumption for cost monitoring.
+// TokenUsage rastreia o consumo de tokens do LLM para monitoramento de custos.
 type TokenUsage struct {
 	PromptTokens     int     `json:"prompt_tokens"`
 	CompletionTokens int     `json:"completion_tokens"`
@@ -34,25 +34,25 @@ type TokenUsage struct {
 }
 
 // ============================================================
-// Assistant API Request/Response (matches frontend spec)
+// API do Assistente — Request/Response (segue o contrato do frontend)
 // ============================================================
 
-// AssistantRequest is the POST body for /v1/assistant/{customerId}.
+// AssistantRequest é o body do POST /v1/assistant/{customerId}.
 type AssistantRequest struct {
 	Message        string `json:"message"`
 	ConversationID string `json:"conversationId,omitempty"`
 }
 
-// AssistantMessage represents a single chat message.
+// AssistantMessage representa uma mensagem individual do chat.
 type AssistantMessage struct {
 	ID        string           `json:"id"`
-	Role      string           `json:"role"` // user, assistant, system
+	Role      string           `json:"role"` // user, assistant, system (papel na conversa)
 	Content   string           `json:"content"`
 	Timestamp string           `json:"timestamp"`
 	Metadata  *MessageMetadata `json:"metadata,omitempty"`
 }
 
-// MessageMetadata enriches a message with tool/RAG/token info.
+// MessageMetadata enriquece a mensagem com informações de tools/RAG/tokens.
 type MessageMetadata struct {
 	ToolsUsed  []string    `json:"toolsUsed,omitempty"`
 	RAGSources []RAGSource `json:"ragSources,omitempty"`
@@ -61,7 +61,7 @@ type MessageMetadata struct {
 	Reasoning  string      `json:"reasoning,omitempty"`
 }
 
-// RAGSource represents a document source used by the RAG pipeline.
+// RAGSource representa uma fonte de documento usada pelo pipeline RAG.
 type RAGSource struct {
 	DocumentID     string  `json:"documentId"`
 	Title          string  `json:"title"`
@@ -69,7 +69,7 @@ type RAGSource struct {
 	Snippet        string  `json:"snippet"`
 }
 
-// AssistantResponse is the final response from the BFA assistant endpoint.
+// AssistantResponse é a resposta final do endpoint do assistente BFA.
 type AssistantResponse struct {
 	ConversationID string            `json:"conversationId"`
 	Message        *AssistantMessage `json:"message"`
@@ -77,7 +77,7 @@ type AssistantResponse struct {
 	Transactions   []Transaction     `json:"transactions,omitempty"`
 }
 
-// InternalAssistantResult is the service-level result before mapping to API shape.
+// InternalAssistantResult é o resultado no nível de serviço antes de mapear para o formato da API.
 type InternalAssistantResult struct {
 	CustomerID     string
 	Profile        *CustomerProfile

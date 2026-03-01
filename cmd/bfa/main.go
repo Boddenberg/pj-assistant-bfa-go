@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	chatinfra "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/infra"
+	chatservice "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/service"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/config"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/handler"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/cache"
@@ -96,6 +98,10 @@ func main() {
 
 	agentClient := client.NewAgentClient(httpClient, cfg.AgentAPIURL, cb, resilienceCfg)
 
+	// Chat Agent Client — chama o Agent Python via POST /v1/chat
+	// Esse é o client novo para a rota GET /v1/assistant/{customerId}
+	chatAgentClient := chatinfra.NewChatAgentClient(httpClient, cfg.ChatAgentURL, cb, resilienceCfg)
+
 	// --- Services ---
 	assistantSvc := service.NewAssistant(
 		profileClient,
@@ -123,8 +129,21 @@ func main() {
 		logger.Warn("auth service: Supabase not configured, auth routes unavailable")
 	}
 
+	// --- Chat Service (Strategy Pattern) ---
+	// Registra as strategies na ordem de prioridade.
+	// A primeira strategy que aceita o intent ganha.
+	onboardingStrategy := chatservice.NewOnboardingStrategy(chatAgentClient, logger)
+	chatStrategies := []chatservice.ChatStrategy{
+		onboardingStrategy, // intent "onboarding" → abertura de conta
+		// Futuro: pixStrategy, balanceStrategy, etc.
+	}
+	chatSvc := chatservice.NewChatService(chatAgentClient, chatStrategies, logger)
+	logger.Info("chat service enabled with strategies",
+		zap.Int("strategies_count", len(chatStrategies)),
+	)
+
 	// --- Router ---
-	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, metrics, logger)
+	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatSvc, metrics, logger)
 
 	// --- Server ---
 	srv := &http.Server{
