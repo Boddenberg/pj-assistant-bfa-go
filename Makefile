@@ -27,10 +27,14 @@ lint: ## Lint Go code
 # Agent (Python)
 # ============================================================
 
+sync-kb: ## Sync knowledge_base/ into agent/knowledge_base/ (single source of truth)
+	rm -rf agent/knowledge_base/
+	cp -r knowledge_base/ agent/knowledge_base/
+
 agent-install: ## Install Python agent dependencies
 	cd agent && pip install -e ".[dev]"
 
-agent-run: ## Run the Python agent locally
+agent-run: sync-kb ## Run the Python agent locally
 	cd agent && uvicorn app.server:app --reload --port 8090
 
 agent-test: ## Run Python agent tests
@@ -43,7 +47,7 @@ agent-lint: ## Lint Python code
 # Docker
 # ============================================================
 
-docker-up: ## Start all services with Docker Compose
+docker-up: sync-kb ## Start all services with Docker Compose
 	docker compose up --build -d
 
 docker-down: ## Stop all services

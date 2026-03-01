@@ -98,7 +98,7 @@ def _build_chroma_store(embedding_fn: HuggingFaceEmbeddings, persist_dir: Path) 
 
     loader = DirectoryLoader(
         str(kb_path),
-        glob="**/*.txt",
+        glob="**/*.md",
         loader_cls=TextLoader,
         loader_kwargs={"encoding": "utf-8"},
     )

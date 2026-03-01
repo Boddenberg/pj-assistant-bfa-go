@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Vector Store
     chroma_persist_dir: str = "./data/chroma"
-    knowledge_base_dir: str = "./data/knowledge_base"
+    knowledge_base_dir: str = "./knowledge_base"
 
     # Supabase
     supabase_url: str = ""

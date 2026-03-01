@@ -42,7 +42,7 @@ services:
       - OPENAI_MODEL=gpt-4o-mini
       - EMBEDDING_MODEL=all-MiniLM-L6-v2
       - CHROMA_PERSIST_DIR=/app/data/chroma
-      - KNOWLEDGE_BASE_DIR=/app/data/knowledge_base
+      - KNOWLEDGE_BASE_DIR=/app/knowledge_base
       - USE_SUPABASE=${USE_SUPABASE:-true}
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}

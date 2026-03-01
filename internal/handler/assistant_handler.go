@@ -82,7 +82,7 @@ func assistantHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFu
 //
 // Rota exigida pelo case do Itaú:
 //
-//   GET /v1/assistant/{customerId}?q=mensagem+do+usuário
+//	GET /v1/assistant/{customerId}?q=mensagem+do+usuário
 //
 // Orquestra chamadas para Profile API + Transactions API + Agente IA
 // usando concorrência, retry, circuit breaker, cache, tracing.

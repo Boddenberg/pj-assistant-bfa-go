@@ -172,6 +172,58 @@ class SupabaseVectorStore:
         except Exception:
             return 0
 
+    def delete_all_documents(self):
+        """Delete all documents from the Supabase vector store."""
+        try:
+            # Delete all rows (neq filter matches everything)
+            resp = self._client.delete(
+                self._rest_url("documents?id=neq.____never_match____"),
+                headers=self.headers,
+            )
+            if resp.status_code in (200, 204):
+                logger.info("supabase.documents_deleted")
+            else:
+                # Try alternative: delete where id is not null (matches all)
+                resp = self._client.delete(
+                    self._rest_url("documents?id=not.is.null"),
+                    headers=self.headers,
+                )
+                logger.info("supabase.documents_deleted", status=resp.status_code)
+        except Exception as e:
+            logger.error("supabase.delete_error", error=str(e))
+
+    def get_metadata_value(self, key: str) -> str | None:
+        """Get a metadata value from a special _meta document."""
+        try:
+            resp = self._client.get(
+                self._rest_url(f"documents?id=eq._meta_{key}&select=content"),
+                headers=self.headers,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data:
+                    return data[0].get("content")
+            return None
+        except Exception:
+            return None
+
+    def set_metadata_value(self, key: str, value: str):
+        """Store a metadata value in a special _meta document."""
+        try:
+            row = {
+                "id": f"_meta_{key}",
+                "content": value,
+                "metadata": json.dumps({"type": "meta", "key": key}),
+                "embedding": [0.0] * 384,  # dummy embedding
+            }
+            self._client.post(
+                self._rest_url("documents"),
+                headers={**self.headers, "Prefer": "resolution=merge-duplicates,return=representation"},
+                json=[row],
+            )
+        except Exception as e:
+            logger.error("supabase.set_metadata_error", error=str(e))
+
 
 def build_supabase_store(embedding_fn) -> SupabaseVectorStore:
     """Create and optionally seed the Supabase vector store."""
@@ -181,13 +233,43 @@ def build_supabase_store(embedding_fn) -> SupabaseVectorStore:
         embedding_fn=embedding_fn,
     )
 
-    # Seed if empty
-    doc_count = store.get_document_count()
-    if doc_count == 0:
-        logger.info("supabase.seeding_knowledge_base")
+    # Compute a hash of the current knowledge base content
+    kb_hash = _compute_kb_hash()
+    stored_hash = store.get_metadata_value("kb_content_hash")
+
+    if stored_hash != kb_hash:
+        logger.info(
+            "supabase.kb_changed_reseeding",
+            old_hash=stored_hash,
+            new_hash=kb_hash,
+        )
+        store.delete_all_documents()
         _seed_knowledge_base(store)
+        store.set_metadata_value("kb_content_hash", kb_hash)
+    else:
+        doc_count = store.get_document_count()
+        if doc_count == 0:
+            logger.info("supabase.seeding_knowledge_base")
+            _seed_knowledge_base(store)
+            store.set_metadata_value("kb_content_hash", kb_hash)
+        else:
+            logger.info("supabase.kb_up_to_date", docs=doc_count)
 
     return store
+
+
+def _compute_kb_hash() -> str:
+    """Compute a SHA-256 hash of all knowledge base files to detect changes."""
+    kb_path = Path(settings.knowledge_base_dir)
+    if not kb_path.exists():
+        return "empty"
+
+    hasher = hashlib.sha256()
+    for file_path in sorted(kb_path.glob("**/*.md")):
+        hasher.update(file_path.name.encode())
+        hasher.update(file_path.read_text(encoding="utf-8").encode())
+
+    return hasher.hexdigest()[:16]
 
 
 def _seed_knowledge_base(store: SupabaseVectorStore):
@@ -206,7 +288,7 @@ def _seed_knowledge_base(store: SupabaseVectorStore):
     )
 
     documents = []
-    for file_path in kb_path.glob("**/*.txt"):
+    for file_path in sorted(kb_path.glob("**/*.md")):
         try:
             content = file_path.read_text(encoding="utf-8")
             chunks = text_splitter.split_text(content)
