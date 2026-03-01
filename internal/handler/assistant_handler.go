@@ -76,6 +76,74 @@ func assistantHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFu
 	}
 }
 
+// ============================================================
+// 1-GET. Assistente IA — GET /v1/assistant/{customerId}
+// ============================================================
+//
+// Rota exigida pelo case do Itaú:
+//
+//   GET /v1/assistant/{customerId}?q=mensagem+do+usuário
+//
+// Orquestra chamadas para Profile API + Transactions API + Agente IA
+// usando concorrência, retry, circuit breaker, cache, tracing.
+//
+// A query "q" é opcional. Quando ausente, o agent recebe uma mensagem
+// default pedindo um resumo financeiro do cliente.
+//
+// Essa rota NÃO tem body — toda a informação vem pela URL e query params,
+// o que garante compatibilidade total com proxies reversos (Railway, etc).
+func assistantGetHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "GET /v1/assistant/{customerId}")
+		defer span.End()
+
+		// Extrai customerId da URL
+		customerID := chi.URLParam(r, "customerId")
+		if customerID == "" {
+			writeError(w, http.StatusBadRequest, "customer_id is required")
+			return
+		}
+		span.SetAttributes(attribute.String("customer.id", customerID))
+
+		// Extrai a mensagem do query param "q" (opcional)
+		message := strings.TrimSpace(r.URL.Query().Get("q"))
+		if message == "" {
+			message = "Faça um resumo financeiro do meu perfil e transações recentes."
+		}
+
+		start := time.Now()
+		result, err := svc.GetAssistantResponse(ctx, customerID, message)
+		latencyMs := time.Since(start).Milliseconds()
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		resp := domain.AssistantResponse{
+			ConversationID: uuid.New().String(),
+			Message: &domain.AssistantMessage{
+				ID:        uuid.New().String(),
+				Role:      "assistant",
+				Content:   result.Recommendation.Answer,
+				Timestamp: time.Now().Format(time.RFC3339),
+				Metadata: &domain.MessageMetadata{
+					ToolsUsed: result.Recommendation.ToolsExecuted,
+					TokenUsage: &domain.TokenUsage{
+						PromptTokens:     result.Recommendation.TokensUsed.PromptTokens,
+						CompletionTokens: result.Recommendation.TokensUsed.CompletionTokens,
+						TotalTokens:      result.Recommendation.TokensUsed.TotalTokens,
+					},
+					LatencyMs: latencyMs,
+					Reasoning: result.Recommendation.Reasoning,
+				},
+			},
+			Profile: result.Profile,
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
 // chatHandler is an alias for the assistant endpoint that accepts customerId in the body.
 func chatHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

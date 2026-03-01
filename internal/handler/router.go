@@ -46,6 +46,9 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// =============================================
 		// 1. Assistente IA
 		// =============================================
+		// GET  — rota do case: busca profile+transactions+agent via query param ?q=
+		// POST — mesma lógica mas recebe message via body JSON
+		r.Get("/assistant/{customerId}", assistantGetHandler(svc, logger))
 		r.Post("/assistant/{customerId}", assistantHandler(svc, logger))
 
 		// =============================================
