@@ -1,5 +1,5 @@
-// Package handler — chat_handler.go implementa o handler da rota
-// POST /v1/chat/{customerId} — a entrada do chat com IA.
+// Package handler — chat_handler.go implementa o handler das rotas
+// POST /v1/chat/{customerId} e POST /v1/chat — a entrada do chat com IA.
 //
 // ============================================================
 // DIFERENÇA ENTRE AS ROTAS DE ASSISTANT
@@ -10,7 +10,8 @@
 //   - Manda tudo pro Agent (POST /v1/agent/invoke)
 //   - Resposta com metadata completa (tokens, tools, reasoning)
 //
-// POST /v1/chat/{customerId}       →  rota "leve" (nova)
+// POST /v1/chat/{customerId}       →  rota "leve" (cliente autenticado)
+// POST /v1/chat                    →  rota "leve" (anônimo / onboarding)
 //   - Recebe body JSON: {"query": "..."}
 //   - Usa Strategy Pattern para rotear o contexto
 //   - Chama Agent Python (POST /v1/chat)
@@ -44,9 +45,13 @@ var tracer = otel.Tracer("chat/handler")
 
 // ChatHandler retorna o http.HandlerFunc para a rota POST /v1/chat/{customerId}.
 //
+// Rotas:
+//
+//	POST /v1/chat/ab84533a-...  → cliente autenticado
+//	POST /v1/chat               → cliente anônimo (ex: abertura de conta)
+//
 // Request:
 //
-//	POST /v1/chat/ab84533a-9589-41e1-b503-50cdc9cb9860
 //	Content-Type: application/json
 //	Body: {"query": "Quero abrir uma conta PJ"}
 //
@@ -63,15 +68,14 @@ var tracer = otel.Tracer("chat/handler")
 func ChatHandler(chatSvc *service.ChatService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Inicia o span de tracing para essa rota
-		ctx, span := tracer.Start(r.Context(), "POST /v1/chat/{customerId}")
+		ctx, span := tracer.Start(r.Context(), "POST /v1/chat")
 		defer span.End()
 
-		// Extrai o customerId da URL.
-		// Exemplo: /v1/assistant/ab84533a-9589-41e1-b503-50cdc9cb9860
+		// Extrai o customerId da URL (opcional).
+		// Se não vier, usa "anonymous" (ex: abertura de conta).
 		customerID := chi.URLParam(r, "customerId")
 		if customerID == "" {
-			writeError(w, http.StatusBadRequest, "customer_id is required")
-			return
+			customerID = "anonymous"
 		}
 		span.SetAttributes(attribute.String("customer.id", customerID))
 
