@@ -297,6 +297,12 @@ func (s *OnboardingStrategy) handleFieldValidation(
 	}
 
 	// ACEITO → persistir o campo na sessão
+	// Para CNPJ e CPF, formatar bonitinho independente de como o usuário digitou
+	if field == "cnpj" {
+		value = formatCNPJ(onlyDigits(value))
+	} else if field == "representanteCpf" {
+		value = formatCPF(onlyDigits(value))
+	}
 	session.CollectedData[field] = value
 
 	s.logger.Info("onboarding: field accepted",
@@ -328,7 +334,7 @@ func (s *OnboardingStrategy) validateField(field, value string, session *domain.
 	case "cnpj":
 		digits := onlyDigits(value)
 		if len(digits) != 14 {
-			return fmt.Errorf("CNPJ inválido: deve conter 14 dígitos numéricos no formato XX.XXX.XXX/XXXX-XX")
+			return fmt.Errorf("CNPJ inválido: deve conter 14 dígitos numéricos (com ou sem pontuação)")
 		}
 
 	case "razaoSocial":
@@ -354,7 +360,7 @@ func (s *OnboardingStrategy) validateField(field, value string, session *domain.
 	case "representanteCpf":
 		digits := onlyDigits(value)
 		if len(digits) != 11 {
-			return fmt.Errorf("CPF inválido: deve conter 11 dígitos numéricos no formato XXX.XXX.XXX-XX")
+			return fmt.Errorf("CPF inválido: deve conter 11 dígitos numéricos (com ou sem pontuação)")
 		}
 
 	case "representantePhone":
@@ -544,6 +550,22 @@ func (s *OnboardingStrategy) buildResponse(resp *domain.ChatAgentResponse) *doma
 		FieldValue:       resp.FieldValue,
 		SuggestedActions: resp.SuggestedActions,
 	}
+}
+
+// formatCNPJ formata 14 dígitos como XX.XXX.XXX/XXXX-XX.
+func formatCNPJ(digits string) string {
+	if len(digits) != 14 {
+		return digits
+	}
+	return fmt.Sprintf("%s.%s.%s/%s-%s", digits[:2], digits[2:5], digits[5:8], digits[8:12], digits[12:])
+}
+
+// formatCPF formata 11 dígitos como XXX.XXX.XXX-XX.
+func formatCPF(digits string) string {
+	if len(digits) != 11 {
+		return digits
+	}
+	return fmt.Sprintf("%s.%s.%s-%s", digits[:3], digits[3:6], digits[6:9], digits[9:])
 }
 
 // onlyDigits extrai apenas dígitos de uma string.
