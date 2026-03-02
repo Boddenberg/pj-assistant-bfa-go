@@ -143,8 +143,10 @@ func (s *ChatService) ProcessMessage(ctx context.Context, customerID string, req
 	// Passo 4: Procura uma strategy registrada que aceite o intent
 	for _, strategy := range s.strategies {
 		if strategy.CanHandle(intent) {
-			s.logger.Debug("delegating to strategy",
+			s.logger.Info("chat: delegating to strategy",
+				zap.String("customer_id", customerID),
 				zap.String("intent", intent),
+				zap.Int("history_len", len(history)),
 			)
 			return strategy.Handle(ctx, chatCtx)
 		}
@@ -152,7 +154,8 @@ func (s *ChatService) ProcessMessage(ctx context.Context, customerID string, req
 
 	// Passo 5: Nenhuma strategy encontrada → usa a default
 	// A default simplesmente repassa a query direto pro agent
-	s.logger.Debug("no strategy matched, using default agent call",
+	s.logger.Info("chat: no strategy matched, using default agent call",
+		zap.String("customer_id", customerID),
 		zap.String("intent", intent),
 	)
 	return s.defaultHandle(ctx, chatCtx)
@@ -170,14 +173,26 @@ func (s *ChatService) defaultHandle(ctx context.Context, chatCtx *domain.ChatCon
 	}
 
 	// Chama o Agent Python
+	s.logger.Info("chat: calling agent (default)",
+		zap.String("customer_id", chatCtx.CustomerID),
+		zap.String("context", "general"),
+	)
 	agentResp, err := s.agentClient.SendChat(ctx, agentReq)
 	if err != nil {
-		s.logger.Error("agent call failed",
+		s.logger.Error("chat: agent call failed",
 			zap.String("customer_id", chatCtx.CustomerID),
 			zap.Error(err),
 		)
 		return nil, err
 	}
+
+	s.logger.Info("chat: agent responded (default)",
+		zap.String("customer_id", chatCtx.CustomerID),
+		zap.String("context", agentResp.Context),
+		zap.String("intent", agentResp.Intent),
+		zap.Float64("confidence", agentResp.Confidence),
+		zap.Int("answer_len", len(agentResp.Answer)),
+	)
 
 	// Monta a resposta para o chamador
 	return &domain.ChatResponse{

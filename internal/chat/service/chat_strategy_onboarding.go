@@ -124,6 +124,14 @@ func (s *OnboardingStrategy) Handle(ctx context.Context, chatCtx *domain.ChatCon
 	}
 
 	// Chama o Agent Python
+	s.logger.Info("onboarding: calling agent",
+		zap.String("customer_id", chatCtx.CustomerID),
+		zap.String("context", "onboarding"),
+		zap.String("validation_error", agentReq.ValidationError),
+		zap.Int("history_len", len(agentReq.History)),
+		zap.Bool("session_started", session.Started),
+		zap.Int("collected_fields", len(session.CollectedData)),
+	)
 	agentResp, err := s.agentClient.SendChat(ctx, agentReq)
 	if err != nil {
 		s.logger.Error("onboarding: agent call failed",
@@ -132,6 +140,14 @@ func (s *OnboardingStrategy) Handle(ctx context.Context, chatCtx *domain.ChatCon
 		)
 		return nil, fmt.Errorf("onboarding agent call: %w", err)
 	}
+
+	s.logger.Info("onboarding: agent responded",
+		zap.String("customer_id", chatCtx.CustomerID),
+		zap.String("current_field", stringPtrOrNil(agentResp.CurrentField)),
+		zap.String("field_value", stringPtrOrNil(agentResp.FieldValue)),
+		zap.Int("answer_len", len(agentResp.Answer)),
+		zap.Float64("confidence", agentResp.Confidence),
+	)
 
 	// Salva a query para possível reenvio (se validação falhar)
 	session.LastQuery = chatCtx.Query
@@ -196,12 +212,16 @@ func (s *OnboardingStrategy) handleFieldValidation(
 
 	// Se field_value é nil, o agente está pedindo o campo pela primeira vez
 	if resp.FieldValue == nil {
+		s.logger.Info("onboarding: agent asking for field (no value yet)",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("field", field),
+		)
 		return s.buildResponse(resp), nil
 	}
 
 	value := *resp.FieldValue
 
-	s.logger.Debug("onboarding: validating field",
+	s.logger.Info("onboarding: validating field",
 		zap.String("customer_id", chatCtx.CustomerID),
 		zap.String("field", field),
 		zap.String("value_preview", truncate(value, 20)),
@@ -226,10 +246,25 @@ func (s *OnboardingStrategy) handleFieldValidation(
 			ValidationError: validationErr.Error(),
 		}
 
+		s.logger.Info("onboarding: retrying agent with validation_error",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("field", field),
+			zap.String("validation_error", validationErr.Error()),
+		)
 		retryResp, err := s.agentClient.SendChat(ctx, retryReq)
 		if err != nil {
+			s.logger.Error("onboarding: retry agent call failed",
+				zap.String("customer_id", chatCtx.CustomerID),
+				zap.Error(err),
+			)
 			return nil, fmt.Errorf("onboarding retry agent call: %w", err)
 		}
+
+		s.logger.Info("onboarding: retry agent responded",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("current_field", stringPtrOrNil(retryResp.CurrentField)),
+			zap.Int("answer_len", len(retryResp.Answer)),
+		)
 
 		// Resposta do retry: o agente vai pedir o campo de novo com o erro humanizado
 		return s.buildResponse(retryResp), nil
@@ -512,4 +547,12 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// stringPtrOrNil retorna o valor do ponteiro ou "<nil>" se nil.
+func stringPtrOrNil(s *string) string {
+	if s == nil {
+		return "<nil>"
+	}
+	return *s
 }
