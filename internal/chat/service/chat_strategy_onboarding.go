@@ -196,6 +196,40 @@ func (s *OnboardingStrategy) processAgentResponse(
 
 	field := *resp.CurrentField
 
+	// ── Guarda de segurança: o BFA é dono do estado ──
+	// Se o agente devolveu um current_field diferente do esperado,
+	// NÃO confiamos na resposta do LLM — forçamos o campo correto.
+	// Isso impede que o LLM pule campos ou repita campos já coletados.
+	expectedField := "welcome"
+	if session.Started {
+		expectedField = session.NextExpectedField()
+	}
+
+	if field != expectedField && field != "welcome" && field != "completed" {
+		s.logger.Warn("onboarding: agent returned wrong field, overriding",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("agent_field", field),
+			zap.String("expected_field", expectedField),
+		)
+		// Sobrescreve o current_field para o campo correto
+		field = expectedField
+		resp.CurrentField = &field
+
+		// A answer do agente está falando do campo errado — substituir
+		// por uma mensagem genérica correta.
+		// O field_value pode estar certo (o LLM extraiu a query) ou errado.
+		// Se o field_value parece ser a query do usuário, mantemos.
+		// Caso contrário, usamos a query crua.
+		if resp.FieldValue != nil {
+			// O agente extraiu algum valor — vamos usar a query crua como fallback
+			// porque o agente pode ter extraído o valor pensando em outro campo.
+			raw := strings.TrimSpace(chatCtx.Query)
+			resp.FieldValue = &raw
+		}
+		// Gerar answer correta para este campo
+		resp.Answer = fieldAcceptedMessage(field)
+	}
+
 	switch field {
 	case "welcome":
 		// Agente deu boas-vindas → marcar que onboarding iniciou
@@ -616,4 +650,47 @@ func stringPtrOrNil(s *string) string {
 		return "<nil>"
 	}
 	return *s
+}
+
+// fieldLabels mapeia campo → descrição amigável para o usuário.
+var fieldLabels = map[string]string{
+	"cnpj":                   "CNPJ",
+	"razaoSocial":            "Razão Social",
+	"nomeFantasia":           "Nome Fantasia",
+	"email":                  "e-mail de contato",
+	"representanteName":      "nome completo do representante",
+	"representanteCpf":       "CPF do representante",
+	"representantePhone":     "telefone do representante",
+	"representanteBirthDate": "data de nascimento do representante (DD/MM/AAAA)",
+	"password":               "senha de 6 dígitos numéricos",
+	"passwordConfirmation":   "confirmação da senha",
+}
+
+// nextFieldLabel retorna a descrição amigável do campo seguinte ao informado.
+func nextFieldLabel(field string) string {
+	for i, f := range domain.OnboardingFields {
+		if f == field && i+1 < len(domain.OnboardingFields) {
+			next := domain.OnboardingFields[i+1]
+			if label, ok := fieldLabels[next]; ok {
+				return label
+			}
+			return next
+		}
+	}
+	return ""
+}
+
+// fieldAcceptedMessage gera a answer quando o BFA precisou sobrescrever
+// o current_field porque o LLM retornou o campo errado.
+// Informa que recebeu o campo correto e pede o próximo.
+func fieldAcceptedMessage(field string) string {
+	label, ok := fieldLabels[field]
+	if !ok {
+		label = field
+	}
+	next := nextFieldLabel(field)
+	if next != "" {
+		return fmt.Sprintf("Recebi o dado! ✅ Agora, por favor, me informe: **%s**.", next)
+	}
+	return fmt.Sprintf("Recebi o(a) %s! ✅", label)
 }
