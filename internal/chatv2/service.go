@@ -146,9 +146,12 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 				s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
 
 				// Reenviar ao agente — agora com o campo salvo em collected_data.
-				// IMPORTANTE: enviar query vazia para que o agente NÃO interprete
-				// a mesma query como valor do próximo campo.
-				retryResp, retryErr := s.callAgent(ctx, customerID, "", session, "")
+				// Enviamos a query original + validation_error especial para que o agente:
+				// 1. Não rejeite por input vazio
+				// 2. Saiba que o BFA já aceitou e salvou o campo
+				// 3. Avance para o próximo campo sem re-validar
+				retryResp, retryErr := s.callAgent(ctx, customerID, query, session,
+					"CAMPO_ACEITO_BFA: o campo '"+step+"' foi validado e salvo pelo BFA. Avance para o próximo campo.")
 				if retryErr != nil {
 					return nil, fmt.Errorf("agent retry after BFA override: %w", retryErr)
 				}

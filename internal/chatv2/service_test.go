@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -690,10 +691,20 @@ func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 				NextStep: strPtr("razaoSocial"),
 			}
 		case 2:
-			// BFA overrode rejection, re-calls agent.
-			// Query MUST be empty — not "adbsasd" again.
-			if req.Query != "" {
-				t.Errorf("re-call query should be empty to prevent leak, got %q", req.Query)
+			// BFA overrode rejection, re-calls agent with validation_error signal.
+			// validation_error MUST contain "CAMPO_ACEITO_BFA" to signal override.
+			if !strings.Contains(req.ValidationError, "CAMPO_ACEITO_BFA") {
+				t.Errorf("re-call should have CAMPO_ACEITO_BFA signal, got %q", req.ValidationError)
+			}
+			// razaoSocial should be in collected_data
+			found := false
+			for _, item := range req.CollectedData {
+				if item.Key == "razaoSocial" && item.Value == "adbsasd" {
+					found = true
+				}
+			}
+			if !found {
+				t.Error("razaoSocial should be in collected_data on re-call")
 			}
 
 			// Agent sees razaoSocial in collected_data, advances to nomeFantasia
