@@ -748,3 +748,133 @@ func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 		t.Errorf("expected advance response, got %q", resp.Answer)
 	}
 }
+
+// ============================================================
+// Test: sanitizeAnswer strips CAMPO_ACEITO_BFA from answer
+// ============================================================
+
+func TestSanitizeAnswer_RemovesCampoAceitoBFA(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{
+			name:   "only CAMPO_ACEITO_BFA line",
+			input:  "CAMPO_ACEITO_BFA: o campo 'cnpj' foi validado e salvo pelo BFA. Avance para o próximo campo.",
+			expect: "Dado recebido! Continuando...",
+		},
+		{
+			name:   "mixed with real answer",
+			input:  "CAMPO_ACEITO_BFA: o campo 'cnpj' salvo.\nQual o Nome Fantasia da empresa?",
+			expect: "Qual o Nome Fantasia da empresa?",
+		},
+		{
+			name:   "no CAMPO_ACEITO_BFA",
+			input:  "Perfeito! Qual o seu CNPJ?",
+			expect: "Perfeito! Qual o seu CNPJ?",
+		},
+		{
+			name:   "empty after removal",
+			input:  "  CAMPO_ACEITO_BFA: salvo  ",
+			expect: "Dado recebido! Continuando...",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sanitizeAnswer(tc.input)
+			if got != tc.expect {
+				t.Errorf("sanitizeAnswer(%q) = %q, want %q", tc.input, got, tc.expect)
+			}
+		})
+	}
+}
+
+// ============================================================
+// Test: MaxRetries exceeded triggers reset
+// ============================================================
+
+func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		// Agent always rejects inline (step == next_step)
+		resp := AgentResponse{
+			Answer:   "Telefone inválido.",
+			Context:  strPtr("onboarding"),
+			Step:     strPtr("representantePhone"),
+			NextStep: strPtr("representantePhone"),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	svc := newTestService(server.URL)
+	session := svc.sessions.Get("cust-reset")
+	session.OnboardingData["cnpj"] = "38535631000199"
+	session.OnboardingData["razaoSocial"] = "Empresa X"
+	session.LastStep = "representantePhone"
+
+	// Fail 3 times (MaxRetries = 3)
+	var resp *FrontendResponse
+	var err error
+	for i := 0; i < 3; i++ {
+		resp, err = svc.ProcessTurn(context.Background(), "cust-reset", "abc")
+		if err != nil {
+			t.Fatalf("unexpected error on attempt %d: %v", i+1, err)
+		}
+	}
+
+	// After 3 failures, should get reset step
+	if derefStr(resp.Step) != "reset" {
+		t.Errorf("expected step=reset after MaxRetries, got %q", derefStr(resp.Step))
+	}
+	if derefStr(resp.NextStep) != "reset" {
+		t.Errorf("expected next_step=reset after MaxRetries, got %q", derefStr(resp.NextStep))
+	}
+
+	// Session should be cleared
+	newSession := svc.sessions.Get("cust-reset")
+	if len(newSession.OnboardingData) != 0 {
+		t.Errorf("session should be empty after reset, got %d fields", len(newSession.OnboardingData))
+	}
+}
+
+// ============================================================
+// Test: Agent sends step=reset → BFA clears session
+// ============================================================
+
+func TestProcessTurn_AgentResetStep(t *testing.T) {
+	server := mockAgentServer(AgentResponse{
+		Answer:   "Vamos recomeçar do zero!",
+		Context:  strPtr("onboarding"),
+		Step:     strPtr("reset"),
+		NextStep: strPtr("reset"),
+	})
+	defer server.Close()
+
+	svc := newTestService(server.URL)
+	session := svc.sessions.Get("cust-agent-reset")
+	session.OnboardingData["cnpj"] = "38535631000199"
+	session.OnboardingData["razaoSocial"] = "Empresa Y"
+
+	resp, err := svc.ProcessTurn(context.Background(), "cust-agent-reset", "resetar")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if derefStr(resp.Step) != "reset" {
+		t.Errorf("expected step=reset, got %q", derefStr(resp.Step))
+	}
+	if resp.Answer != "Vamos recomeçar do zero!" {
+		t.Errorf("expected agent's reset answer, got %q", resp.Answer)
+	}
+
+	// Session should be cleared
+	newSession := svc.sessions.Get("cust-agent-reset")
+	if len(newSession.OnboardingData) != 0 {
+		t.Errorf("session should be empty after reset, got %d fields", len(newSession.OnboardingData))
+	}
+}

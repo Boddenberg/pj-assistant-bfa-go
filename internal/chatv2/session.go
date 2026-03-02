@@ -31,3 +31,10 @@ func (s *SessionStore) Get(customerID string) *Session {
 	}
 	return sess
 }
+
+// Delete remove a sessão do customer, liberando memória.
+func (s *SessionStore) Delete(customerID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.sessions, customerID)
+}

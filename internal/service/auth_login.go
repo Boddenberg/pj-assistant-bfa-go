@@ -21,6 +21,9 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	ctx, span := authTracer.Start(ctx, "AuthService.Login")
 	defer span.End()
 
+	// Log request (obfuscate password)
+	s.logger.Info("auth login request", zap.String("cpf", req.CPF), zap.String("password", "******"))
+
 	// Normalize: strip mask so lookup works regardless of format sent
 	req.CPF = normalizeDoc(req.CPF)
 	span.SetAttributes(attribute.String("cpf", req.CPF))
@@ -132,6 +135,14 @@ func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	}
 
 	s.logger.Info("customer logged in", zap.String("customer_id", profile.CustomerID))
+
+	// Log response (exclude tokens)
+	s.logger.Info("auth login response",
+		zap.String("customer_id", profile.CustomerID),
+		zap.String("customer_name", profile.Name),
+		zap.String("company_name", profile.CompanyName),
+		zap.Int("expires_in", int(s.accessTTL.Seconds())),
+	)
 
 	return &domain.LoginResponse{
 		AccessToken:  accessToken,

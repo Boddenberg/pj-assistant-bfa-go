@@ -105,6 +105,22 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		return s.buildResponse(resp, nil), nil
 	}
 
+	// Caso 2b: reset → agente pediu para resetar a sessão
+	// Frontend deve limpar o state local e gerar novo customerID.
+	if step == "reset" || nextStep == "reset" {
+		s.logger.Info("🔄 reset solicitado pelo agente — limpando sessão",
+			zap.String("customer_id", customerID),
+		)
+		s.sessions.Delete(customerID)
+		resetStep := strPtr("reset")
+		return &FrontendResponse{
+			Answer:   sanitizeAnswer(resp.Answer),
+			Context:  resp.Context,
+			Step:     resetStep,
+			NextStep: resetStep,
+		}, nil
+	}
+
 	// Controle de retries: se mudou de step, resetar contador
 	if step != session.LastStep {
 		session.Retries = 0
@@ -170,6 +186,23 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 
 			s.appendHistory(session, query, resp.Answer, &step, boolPtr(false))
 
+			// Se excedeu MaxRetries, resetar sessão e sinalizar ao frontend
+			if session.Retries >= MaxRetries {
+				s.logger.Warn("🔄 max retries exceeded — resetting session",
+					zap.String("customer_id", customerID),
+					zap.String("step", step),
+					zap.Int("retries", session.Retries),
+				)
+				s.sessions.Delete(customerID)
+				resetStep := strPtr("reset")
+				return &FrontendResponse{
+					Answer:   fmt.Sprintf("Não conseguimos validar o campo após %d tentativas. Por favor, recomece o processo.", MaxRetries),
+					Context:  resp.Context,
+					Step:     resetStep,
+					NextStep: resetStep,
+				}, nil
+			}
+
 			errorResp, retryErr := s.callAgent(ctx, customerID, query, session, validationErr.Error())
 			if retryErr != nil {
 				return nil, fmt.Errorf("agent error-format call failed: %w", retryErr)
@@ -212,6 +245,23 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		)
 
 		s.appendHistory(session, query, resp.Answer, &step, boolPtr(false))
+
+		// Se excedeu MaxRetries, resetar sessão e sinalizar ao frontend
+		if session.Retries >= MaxRetries {
+			s.logger.Warn("🔄 max retries exceeded — resetting session",
+				zap.String("customer_id", customerID),
+				zap.String("step", step),
+				zap.Int("retries", session.Retries),
+			)
+			s.sessions.Delete(customerID)
+			resetStep := strPtr("reset")
+			return &FrontendResponse{
+				Answer:   fmt.Sprintf("Não conseguimos validar o campo após %d tentativas. Por favor, recomece o processo.", MaxRetries),
+				Context:  resp.Context,
+				Step:     resetStep,
+				NextStep: resetStep,
+			}, nil
+		}
 
 		// Reenviar ao agente com validation_error para que reformate
 		errorResp, retryErr := s.callAgent(ctx, customerID, query, session, err.Error())
@@ -276,11 +326,24 @@ func (s *Service) checkCompletion(ctx context.Context, customerID, query string,
 		s.logger.Error("finalize account failed", zap.Error(err))
 		return nil, fmt.Errorf("finalize account: %w", err)
 	}
-	s.logger.Info("🎉 onboarding completed",
+	// Log detalhado dos dados do cliente usados para abertura de conta
+	logFields := []zap.Field{
 		zap.String("customer_id", accountData.CustomerID),
 		zap.String("agencia", accountData.Agencia),
 		zap.String("conta", accountData.Conta),
-	)
+	}
+	for _, field := range RequiredOnboardingFields {
+		val, ok := session.OnboardingData[field]
+		if !ok {
+			continue
+		}
+		if field == "password" || field == "passwordConfirmation" {
+			logFields = append(logFields, zap.String(field, "******"))
+		} else {
+			logFields = append(logFields, zap.String(field, val))
+		}
+	}
+	s.logger.Info("🎉 onboarding completed — dados do cliente", logFields...)
 
 	// Pass-through da resposta do agente + dados da conta
 	return s.buildResponse(resp, accountData), nil
@@ -298,14 +361,35 @@ func (s *Service) appendHistory(session *Session, query, answer string, step *st
 
 // buildResponse monta a FrontendResponse a partir da AgentResponse.
 // NUNCA sobrescreve step/next_step — o agente controla a jornada.
+// Sanitiza o answer para remover textos técnicos internos (CAMPO_ACEITO_BFA, etc).
 func (s *Service) buildResponse(resp *AgentResponse, accountData *AccountData) *FrontendResponse {
 	return &FrontendResponse{
-		Answer:      resp.Answer,
+		Answer:      sanitizeAnswer(resp.Answer),
 		Context:     resp.Context,
 		Step:        resp.Step,
 		NextStep:    resp.NextStep,
 		AccountData: accountData,
 	}
+}
+
+// sanitizeAnswer remove textos técnicos internos do answer antes de enviar ao frontend.
+// Isso protege contra o agente Python colar o validation_error no answer.
+func sanitizeAnswer(answer string) string {
+	// Remover linhas que contenham sinais internos do BFA
+	lines := strings.Split(answer, "\n")
+	var clean []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "CAMPO_ACEITO_BFA") {
+			continue
+		}
+		clean = append(clean, line)
+	}
+	result := strings.TrimSpace(strings.Join(clean, "\n"))
+	if result == "" {
+		return "Dado recebido! Continuando..."
+	}
+	return result
 }
 
 func derefStr(p *string) string {
