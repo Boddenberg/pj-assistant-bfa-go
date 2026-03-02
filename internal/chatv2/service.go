@@ -12,10 +12,10 @@ import (
 // frontend → BFA (valida) → Agent Python (dialoga) → frontend.
 //
 // REGRA DE OURO:
-// - O AGENTE decide a ordem dos campos, qual step pedir, e o que dizer ao cliente.
-// - O BFA APENAS valida o field_value de acordo com o step que o agente informa,
-//   salva no banco, e faz pass-through da resposta do agente para o frontend.
-// - O BFA NÃO sabe a jornada, NÃO controla a sequência, NÃO sobrescreve step/next_step.
+//   - O AGENTE decide a ordem dos campos, qual step pedir, e o que dizer ao cliente.
+//   - O BFA APENAS valida o field_value de acordo com o step que o agente informa,
+//     salva no banco, e faz pass-through da resposta do agente para o frontend.
+//   - O BFA NÃO sabe a jornada, NÃO controla a sequência, NÃO sobrescreve step/next_step.
 type Service struct {
 	client     *Client
 	sessions   *SessionStore
@@ -145,8 +145,10 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 
 				s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
 
-				// Reenviar ao agente — agora com o campo salvo em collected_data
-				retryResp, retryErr := s.callAgent(ctx, customerID, query, session, "")
+				// Reenviar ao agente — agora com o campo salvo em collected_data.
+				// IMPORTANTE: enviar query vazia para que o agente NÃO interprete
+				// a mesma query como valor do próximo campo.
+				retryResp, retryErr := s.callAgent(ctx, customerID, "", session, "")
 				if retryErr != nil {
 					return nil, fmt.Errorf("agent retry after BFA override: %w", retryErr)
 				}

@@ -663,3 +663,77 @@ func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 		t.Errorf("cnpj not saved, got %q", session.OnboardingData["cnpj"])
 	}
 }
+
+// ============================================================
+// Test: BFA override re-call must NOT leak query to next field
+// Reproduces exact bug: agent rejects razaoSocial after retries,
+// BFA accepts, re-calls agent with same query → agent uses it as nomeFantasia
+// ============================================================
+
+func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+
+		var req AgentRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		var resp AgentResponse
+		switch callCount {
+		case 1:
+			// Agent rejects razaoSocial inline (step == next_step)
+			// This happens when agent sees retry history and thinks it's still wrong
+			resp = AgentResponse{
+				Answer:   "Razão Social inválida.",
+				Context:  strPtr("onboarding"),
+				Step:     strPtr("razaoSocial"),
+				NextStep: strPtr("razaoSocial"),
+			}
+		case 2:
+			// BFA overrode rejection, re-calls agent.
+			// Query MUST be empty — not "adbsasd" again.
+			if req.Query != "" {
+				t.Errorf("re-call query should be empty to prevent leak, got %q", req.Query)
+			}
+
+			// Agent sees razaoSocial in collected_data, advances to nomeFantasia
+			resp = AgentResponse{
+				Answer:   "Razão Social recebida! Qual o Nome Fantasia?",
+				Context:  strPtr("onboarding"),
+				Step:     strPtr("razaoSocial"),
+				NextStep: strPtr("nomeFantasia"),
+			}
+		default:
+			resp = AgentResponse{Answer: "OK", Context: strPtr("onboarding")}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	svc := newTestService(server.URL)
+	// Pre-populate cnpj as if it was already collected
+	session := svc.sessions.Get("cust-leak")
+	session.OnboardingData["cnpj"] = "38535631000199"
+
+	resp, err := svc.ProcessTurn(context.Background(), "cust-leak", "adbsasd")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// razaoSocial should be saved
+	if session.OnboardingData["razaoSocial"] != "adbsasd" {
+		t.Errorf("razaoSocial not saved, got %q", session.OnboardingData["razaoSocial"])
+	}
+
+	// nomeFantasia should NOT be saved — the re-call must not consume the query
+	if _, ok := session.OnboardingData["nomeFantasia"]; ok {
+		t.Errorf("QUERY LEAKED: nomeFantasia should NOT be populated, got %q", session.OnboardingData["nomeFantasia"])
+	}
+
+	// Response should be the advance response
+	if resp.Answer != "Razão Social recebida! Qual o Nome Fantasia?" {
+		t.Errorf("expected advance response, got %q", resp.Answer)
+	}
+}
