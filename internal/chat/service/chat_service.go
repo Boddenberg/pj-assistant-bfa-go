@@ -48,8 +48,10 @@ var chatTracer = otel.Tracer("chat/service")
 // Handle:    processa a mensagem e retorna a resposta da IA
 type ChatStrategy interface {
 	// CanHandle retorna true se essa strategy trata a intenção dada.
+	// Recebe também o customerID para que strategies com estado (ex: onboarding)
+	// possam verificar se há sessão ativa para esse cliente.
 	// Exemplos de intent: "onboarding", "pix", "balance", "general"
-	CanHandle(intent string) bool
+	CanHandle(intent string, customerID string) bool
 
 	// Handle processa a mensagem do chat dentro do contexto dessa strategy.
 	// Recebe o ChatContext com todas as informações necessárias.
@@ -141,8 +143,10 @@ func (s *ChatService) ProcessMessage(ctx context.Context, customerID string, req
 	}
 
 	// Passo 4: Procura uma strategy registrada que aceite o intent
+	// Passa customerID para que strategies com sessão ativa (ex: onboarding)
+	// possam se identificar mesmo sem keyword match.
 	for _, strategy := range s.strategies {
-		if strategy.CanHandle(intent) {
+		if strategy.CanHandle(intent, customerID) {
 			s.logger.Info("chat: delegating to strategy",
 				zap.String("customer_id", customerID),
 				zap.String("intent", intent),

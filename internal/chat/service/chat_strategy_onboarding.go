@@ -84,9 +84,20 @@ func NewOnboardingStrategy(
 	}
 }
 
-// CanHandle retorna true quando o intent é "onboarding".
-func (s *OnboardingStrategy) CanHandle(intent string) bool {
-	return intent == "onboarding"
+// CanHandle retorna true quando o intent é "onboarding" OU quando
+// já existe uma sessão de onboarding ativa para esse customerID.
+// Isso garante que, após o usuário iniciar o fluxo com "quero abrir conta",
+// as mensagens seguintes (CNPJ, razão social, etc.) continuem sendo
+// roteadas para a OnboardingStrategy mesmo sem keywords de onboarding.
+func (s *OnboardingStrategy) CanHandle(intent string, customerID string) bool {
+	if intent == "onboarding" {
+		return true
+	}
+	// Verifica se há sessão ativa de onboarding para esse customer
+	s.mu.RLock()
+	session, ok := s.sessions[customerID]
+	s.mu.RUnlock()
+	return ok && session.Started
 }
 
 // ============================================================
@@ -220,6 +231,21 @@ func (s *OnboardingStrategy) handleFieldValidation(
 	}
 
 	value := *resp.FieldValue
+
+	// Fallback: se o agent mascarou o field_value (ex: ***CNPJ***, [REDACTED]),
+	// usar a query original do usuário como valor do campo.
+	// Isso acontece quando o LLM decide "proteger" PII por conta própria.
+	if strings.Contains(value, "***") || strings.Contains(value, "REDACTED") || strings.Contains(value, "[") {
+		s.logger.Info("onboarding: field_value appears masked, using raw query as fallback",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("field", field),
+			zap.String("masked_value", value),
+			zap.String("raw_query", truncate(chatCtx.Query, 50)),
+		)
+		value = strings.TrimSpace(chatCtx.Query)
+		// Atualizar o resp para que o frontend receba o valor correto
+		resp.FieldValue = &value
+	}
 
 	s.logger.Info("onboarding: validating field",
 		zap.String("customer_id", chatCtx.CustomerID),
