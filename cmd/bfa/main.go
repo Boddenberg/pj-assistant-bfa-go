@@ -10,8 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	chatinfra "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/infra"
-	chatservice "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/service"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/chatv2"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/config"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/handler"
@@ -100,15 +98,6 @@ func main() {
 
 	agentClient := client.NewAgentClient(httpClient, cfg.AgentAPIURL, cb, resilienceCfg)
 
-	// Chat Agent Client — chama o Agent Python via POST /v1/chat
-	// Esse é o client novo para a rota POST /v1/chat/{customerId}
-	// Usa HTTP client com timeout maior (30s) porque o agent Python pode demorar
-	// (RAG search + LLM call) e circuit breaker isolado para não ser afetado
-	// por falhas em outros serviços (Supabase, profile API, etc).
-	chatHTTPClient := &http.Client{Timeout: 30 * time.Second}
-	chatCB := resilience.NewCircuitBreaker("chat-agent")
-	chatAgentClient := chatinfra.NewChatAgentClient(chatHTTPClient, cfg.ChatAgentURL, chatCB, resilienceCfg)
-
 	// --- Services ---
 	assistantSvc := service.NewAssistant(
 		profileClient,
@@ -136,30 +125,6 @@ func main() {
 		logger.Warn("auth service: Supabase not configured, auth routes unavailable")
 	}
 
-	// --- Chat Service (Strategy Pattern) ---
-	// Registra as strategies na ordem de prioridade.
-	// A primeira strategy que aceita o intent ganha.
-	//
-	// O OnboardingStrategy recebe o authStore (supabaseClient) para poder
-	// criar a conta ao final do fluxo conversacional. Se Supabase não
-	// estiver configurado, authStore é nil e o cadastro retorna erro amigável.
-	var authStore mainport.AuthStore
-	if supabaseClient != nil {
-		authStore = supabaseClient
-	}
-	onboardingStrategy := chatservice.NewOnboardingStrategy(chatAgentClient, authStore, logger)
-	chatStrategies := []chatservice.ChatStrategy{
-		onboardingStrategy, // intent "onboarding" → abertura de conta
-		// Futuro: pixStrategy, balanceStrategy, etc.
-	}
-	chatSvc := chatservice.NewChatService(chatAgentClient, chatStrategies, cfg.MaxChatHistory, logger)
-	logger.Info("chat service enabled with strategies",
-		zap.Int("strategies_count", len(chatStrategies)),
-		zap.Int("max_chat_history", cfg.MaxChatHistory),
-		zap.String("chat_agent_url", cfg.ChatAgentURL),
-		zap.String("agent_api_url", cfg.AgentAPIURL),
-	)
-
 	// --- Chat V2 (Go puro — onboarding orquestrado pelo BFA) ---
 	chatV2Client := chatv2.NewClient(cfg.ChatAgentURL, 30*time.Second, logger)
 	chatV2Sessions := chatv2.NewSessionStore()
@@ -175,7 +140,7 @@ func main() {
 	logger.Info("chatv2 service enabled", zap.String("agent_url", cfg.ChatAgentURL))
 
 	// --- Router ---
-	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatSvc, chatV2Svc, metrics, logger)
+	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatV2Svc, metrics, logger)
 
 	// --- Server ---
 	srv := &http.Server{

@@ -1,11 +1,10 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
-	chathandler "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/handler"
-	chatservice "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/service"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/chatv2"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/observability"
@@ -26,16 +25,27 @@ var tracer = otel.Tracer("handler")
 //
 // O parâmetro chatSvc é opcional (pode ser nil). Quando presente,
 // a rota GET /v1/assistant/{customerId} fica disponível para chat com IA.
-func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatSvc *chatservice.ChatService, chatV2Svc *chatv2.Service, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
+func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatV2Svc *chatv2.Service, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	// --- Middleware ---
+	allowedLocalOrigins := make(map[string]bool)
+	for port := 8080; port <= 8090; port++ {
+		allowedLocalOrigins[fmt.Sprintf("http://localhost:%d", port)] = true
+		allowedLocalOrigins[fmt.Sprintf("http://127.0.0.1:%d", port)] = true
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowOriginFunc: func(r *http.Request, origin string) bool {
+			if allowedLocalOrigins[origin] {
+				return true
+			}
+			// Produção: qualquer HTTPS
+			return len(origin) > 8 && origin[:8] == "https://"
+		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"*"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: false,
+		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 	r.Use(middleware.RequestID)
@@ -60,21 +70,6 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// POST — mesma lógica mas recebe message via body JSON
 		r.Get("/assistant/{customerId}", assistantGetHandler(svc, logger))
 		r.Post("/assistant/{customerId}", assistantHandler(svc, logger))
-
-		// =============================================
-		// 1a. Chat IA (POST) — rota leve com Strategy Pattern
-		// =============================================
-		// Rotas:
-		//   POST /v1/chat/{customerId}  → cliente autenticado
-		//   POST /v1/chat               → cliente anônimo (ex: abertura de conta)
-		// Body: {"query": "Quero abrir uma conta PJ"}
-		// Resp: {"answer": "Olá! Vou te ajudar..."}
-		//
-		// Usamos POST (não GET) porque proxies removem body de GET requests.
-		if chatSvc != nil {
-			r.Post("/chat/{customerId}", chathandler.ChatHandler(chatSvc, logger))
-			r.Post("/chat", chathandler.ChatHandler(chatSvc, logger))
-		}
 
 		// =============================================
 		// 2. Cliente

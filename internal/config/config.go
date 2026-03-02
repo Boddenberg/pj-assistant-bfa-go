@@ -48,9 +48,6 @@ type Config struct {
 	JWTAccessTTL  time.Duration
 	JWTRefreshTTL time.Duration
 
-	// Chat
-	MaxChatHistory int // Máximo de entradas de histórico enviadas ao agent
-
 	// Dev mode
 	DevAuth bool // DEV_AUTH=true bypasses bcrypt, uses dev_logins table
 }
@@ -87,8 +84,6 @@ func Load() *Config {
 		JWTSecret:     getEnv("JWT_SECRET", "bfa-default-dev-secret-change-me"),
 		JWTAccessTTL:  getEnvDuration("JWT_ACCESS_TTL", 15*time.Minute),
 		JWTRefreshTTL: getEnvDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
-
-		MaxChatHistory: getEnvInt("CHAT_MAX_HISTORY", 5),
 
 		DevAuth: getEnv("DEV_AUTH", "false") == "true",
 	}
