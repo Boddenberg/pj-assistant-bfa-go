@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -74,7 +75,7 @@ func newBetterstackCore(cfg betterstackConfig) *betterstackCore {
 		cfg.MaxBatchSize = 100
 	}
 	if cfg.FlushInterval == 0 {
-		cfg.FlushInterval = 5 * time.Second
+		cfg.FlushInterval = 2 * time.Second
 	}
 
 	core := &betterstackCore{
@@ -167,10 +168,15 @@ func (c *betterstackCore) Write(entry zapcore.Entry, fields []zapcore.Field) err
 
 	c.shared.mu.Lock()
 	c.shared.buffer = append(c.shared.buffer, logEntry)
-	shouldFlush := len(c.shared.buffer) >= c.maxBatchSize
+	bufLen := len(c.shared.buffer)
+	shouldFlush := bufLen >= c.maxBatchSize
 	c.shared.mu.Unlock()
 
-	if shouldFlush {
+	// Flush imediato em 3 cenários:
+	// 1. Buffer atingiu maxBatchSize (batch cheio)
+	// 2. Log de nível Error ou superior (queremos visibilidade imediata)
+	// 3. Poucos itens acumulados (< 10) — não vale esperar 5s
+	if shouldFlush || entry.Level >= zapcore.ErrorLevel || bufLen <= 10 {
 		go c.flush()
 	}
 
@@ -206,13 +212,14 @@ func (c *betterstackCore) flush() {
 	// Serializa como JSON array
 	body, err := json.Marshal(batch)
 	if err != nil {
-		// Silenciosamente descarta — não podemos logar aqui (loop infinito)
+		fmt.Fprintf(os.Stderr, "[betterstack] json marshal error: %v (batch_size=%d)\n", err, len(batch))
 		return
 	}
 
 	// POST para o Better Stack
 	req, err := http.NewRequest(http.MethodPost, c.endpoint, bytes.NewReader(body))
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "[betterstack] request creation error: %v\n", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -220,7 +227,12 @@ func (c *betterstackCore) flush() {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "[betterstack] flush error: %v (batch_size=%d)\n", err, len(batch))
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		fmt.Fprintf(os.Stderr, "[betterstack] flush rejected: status=%d (batch_size=%d)\n", resp.StatusCode, len(batch))
+	}
 }
