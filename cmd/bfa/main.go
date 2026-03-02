@@ -154,6 +154,8 @@ func main() {
 	logger.Info("chat service enabled with strategies",
 		zap.Int("strategies_count", len(chatStrategies)),
 		zap.Int("max_chat_history", cfg.MaxChatHistory),
+		zap.String("chat_agent_url", cfg.ChatAgentURL),
+		zap.String("agent_api_url", cfg.AgentAPIURL),
 	)
 
 	// --- Router ---
