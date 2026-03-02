@@ -26,9 +26,11 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	enc.Encode(data)
 }
 
 func parsePagination(r *http.Request) (page, pageSize int) {

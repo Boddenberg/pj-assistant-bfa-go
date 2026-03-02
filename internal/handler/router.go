@@ -6,12 +6,14 @@ import (
 
 	chathandler "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/handler"
 	chatservice "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/service"
+	"github.com/boddenberg/pj-assistant-bfa-go/internal/chatv2"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/observability"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/service"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -24,10 +26,18 @@ var tracer = otel.Tracer("handler")
 //
 // O parâmetro chatSvc é opcional (pode ser nil). Quando presente,
 // a rota GET /v1/assistant/{customerId} fica disponível para chat com IA.
-func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatSvc *chatservice.ChatService, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
+func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatSvc *chatservice.ChatService, chatV2Svc *chatv2.Service, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	// --- Middleware ---
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"https://*", "http://*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"*"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(observability.ZapLoggerMiddleware(logger))
@@ -210,6 +220,11 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 				r.Put("/customers/{customerId}/representative", updateRepresentativeHandler(authSvc, logger))
 			})
 		}
+	})
+
+	// --- API v2 ---
+	r.Route("/v2", func(r chi.Router) {
+		r.Post("/chat", chatv2.Handler(chatV2Svc, logger))
 	})
 
 	return r

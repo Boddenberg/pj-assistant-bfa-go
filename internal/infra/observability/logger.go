@@ -16,17 +16,22 @@ import (
 // debug level → colorized console; otherwise → compact JSON.
 // If axiomToken is provided, logs are also sent to Axiom.
 func NewLogger(level string, axiomToken, axiomDataset string) *zap.Logger {
-	cfg := zap.NewProductionConfig()
+	cfg := zap.NewDevelopmentConfig()
+	cfg.Encoding = "console"
 	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+
+	// Logs normais vão para stdout (evita vermelho no GoLand/IDEs que colorem stderr)
+	cfg.OutputPaths = []string{"stdout"}
+	cfg.ErrorOutputPaths = []string{"stderr"}
 
 	var zapLevel zapcore.Level
 	if level == "debug" {
 		zapLevel = zapcore.DebugLevel
 		cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
-		cfg.Encoding = "console"
-		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	} else {
 		zapLevel = zapcore.InfoLevel
+		cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
 	}
 
 	logger, err := cfg.Build()

@@ -53,11 +53,11 @@ func TestIntegration_FullFlow(t *testing.T) {
 	// --- Mock Agent API ---
 	agentServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := domain.AgentResponse{
-			Answer:     "Based on your strong financials, we recommend expanding your credit line.",
-			Reasoning:  "Positive cash flow, high credit score, established relationship.",
-			Confidence: 0.95,
-			Sources:    []string{"politica_credito.txt"},
-			TokensUsed: domain.TokenUsage{PromptTokens: 800, CompletionTokens: 200, TotalTokens: 1000},
+			Answer:        "Based on your strong financials, we recommend expanding your credit line.",
+			Reasoning:     "Positive cash flow, high credit score, established relationship.",
+			Confidence:    0.95,
+			Sources:       []string{"politica_credito.txt"},
+			TokensUsed:    domain.TokenUsage{PromptTokens: 800, CompletionTokens: 200, TotalTokens: 1000},
 			ToolsExecuted: []string{"rag_retrieval", "financial_analysis", "llm_synthesis"},
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -81,7 +81,7 @@ func TestIntegration_FullFlow(t *testing.T) {
 		logger,
 	)
 
-	router := handler.NewRouter(svc, nil, nil, nil, metrics, logger)
+	router := handler.NewRouter(svc, nil, nil, nil, nil, metrics, logger)
 
 	// --- Execute request ---
 	body, _ := json.Marshal(domain.AssistantRequest{Message: "What is my financial status?"})
@@ -153,7 +153,7 @@ func TestIntegration_ProfileNotFound(t *testing.T) {
 		logger,
 	)
 
-	router := handler.NewRouter(svc, nil, nil, nil, metrics, logger)
+	router := handler.NewRouter(svc, nil, nil, nil, nil, metrics, logger)
 
 	body, _ := json.Marshal(domain.AssistantRequest{Message: "test"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/assistant/nonexistent", bytes.NewReader(body))

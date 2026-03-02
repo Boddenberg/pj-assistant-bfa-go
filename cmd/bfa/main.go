@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 
 	chatinfra "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/infra"
 	chatservice "github.com/boddenberg/pj-assistant-bfa-go/internal/chat/service"
+	"github.com/boddenberg/pj-assistant-bfa-go/internal/chatv2"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/config"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/handler"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/cache"
@@ -158,8 +160,15 @@ func main() {
 		zap.String("agent_api_url", cfg.AgentAPIURL),
 	)
 
+	// --- Chat V2 (Go puro — onboarding orquestrado pelo BFA) ---
+	chatV2Client := chatv2.NewClient(cfg.ChatAgentURL, 30*time.Second, logger)
+	chatV2Sessions := chatv2.NewSessionStore()
+	chatV2Repo := chatv2.NewInMemoryAccountRepository(logger)
+	chatV2Svc := chatv2.NewService(chatV2Client, chatV2Sessions, chatV2Repo, logger)
+	logger.Info("chatv2 service enabled", zap.String("agent_url", cfg.ChatAgentURL))
+
 	// --- Router ---
-	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatSvc, metrics, logger)
+	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatSvc, chatV2Svc, metrics, logger)
 
 	// --- Server ---
 	srv := &http.Server{
@@ -170,10 +179,19 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// --- Start listener (validates port before serving) ---
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	if err != nil {
+		logger.Fatal("failed to bind port", zap.Int("port", cfg.Port), zap.Error(err))
+	}
+
+	logger.Info("🚀 aplicação iniciada com sucesso",
+		zap.String("addr", fmt.Sprintf("http://localhost:%d", cfg.Port)),
+	)
+
 	// --- Graceful shutdown ---
 	go func() {
-		logger.Info("server starting", zap.Int("port", cfg.Port))
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("server failed", zap.Error(err))
 		}
 	}()
