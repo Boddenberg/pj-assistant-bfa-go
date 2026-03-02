@@ -7,6 +7,7 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/supabase"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // SupabaseAccountRepository implementa AccountRepository usando Supabase.
@@ -30,8 +31,62 @@ func (r *SupabaseAccountRepository) CNPJExists(ctx context.Context, cnpj string)
 	return exists
 }
 
+func (r *SupabaseAccountRepository) CPFExists(ctx context.Context, cpf string) bool {
+	existing, _ := r.sb.GetCustomerByCPF(ctx, cpf)
+	return existing != nil
+}
+
 func (r *SupabaseAccountRepository) SaveField(ctx context.Context, sessionID, step, value string) error {
 	return r.sb.UpsertOnboardingField(ctx, sessionID, step, value)
+}
+
+func (r *SupabaseAccountRepository) LoadSession(ctx context.Context, sessionID string) (map[string]string, error) {
+	row, err := r.sb.GetOnboardingSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, nil
+	}
+	// Se já completou, não retomar
+	if row.Status == "completed" {
+		return nil, nil
+	}
+
+	// Converter row para map[step]value (só campos preenchidos)
+	data := make(map[string]string)
+	if row.CNPJ != "" {
+		data["cnpj"] = row.CNPJ
+	}
+	if row.RazaoSocial != "" {
+		data["razaoSocial"] = row.RazaoSocial
+	}
+	if row.NomeFantasia != "" {
+		data["nomeFantasia"] = row.NomeFantasia
+	}
+	if row.Email != "" {
+		data["email"] = row.Email
+	}
+	if row.RepresentanteName != "" {
+		data["representanteName"] = row.RepresentanteName
+	}
+	if row.RepresentanteCPF != "" {
+		data["representanteCpf"] = row.RepresentanteCPF
+	}
+	if row.RepresentantePhone != "" {
+		data["representantePhone"] = row.RepresentantePhone
+	}
+	if row.RepresentanteBirthDate != "" {
+		data["representanteBirthDate"] = row.RepresentanteBirthDate
+	}
+	if row.PasswordHash != "" {
+		data["password"] = row.PasswordHash
+	}
+
+	if len(data) == 0 {
+		return nil, nil
+	}
+	return data, nil
 }
 
 func (r *SupabaseAccountRepository) FinalizeAccount(ctx context.Context, sessionID string, data map[string]string) (*AccountData, error) {
@@ -48,8 +103,14 @@ func (r *SupabaseAccountRepository) FinalizeAccount(ctx context.Context, session
 		Password:               data["password"],
 	}
 
+	// Hash da senha com bcrypt (mesmo custo usado pelo auth service)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(data["password"]), 12)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+
 	// Usar o mesmo fluxo de criação de conta que já existe
-	resp, err := r.sb.CreateCustomerWithAccount(ctx, req, data["password"])
+	resp, err := r.sb.CreateCustomerWithAccount(ctx, req, string(passwordHash))
 	if err != nil {
 		return nil, fmt.Errorf("create account via supabase: %w", err)
 	}

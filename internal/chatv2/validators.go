@@ -25,7 +25,7 @@ func NewValidatorRegistry(repo AccountRepository) ValidatorRegistry {
 		"nomeFantasia":           &minLenValidator{field: "Nome Fantasia", min: 2},
 		"email":                  &emailValidator{},
 		"representanteName":      &minLenValidator{field: "Nome do Representante", min: 3},
-		"representanteCpf":       &cpfValidator{},
+		"representanteCpf":       &cpfValidator{repo: repo},
 		"representantePhone":     &phoneValidator{},
 		"representanteBirthDate": &birthDateValidator{},
 		"password":               &passwordValidator{},
@@ -73,22 +73,29 @@ func (v *minLenValidator) Validate(_ context.Context, value string, _ *Session) 
 
 type emailValidator struct{}
 
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+
 func (v *emailValidator) Validate(_ context.Context, value string, _ *Session) error {
 	trimmed := strings.TrimSpace(value)
-	if !strings.Contains(trimmed, "@") || !strings.Contains(trimmed, ".com") {
-		return fmt.Errorf("e-mail inválido: deve conter @ e .com")
+	if !emailRegex.MatchString(trimmed) {
+		return fmt.Errorf("e-mail inválido: formato esperado usuario@dominio.com")
 	}
 	return nil
 }
 
-// --- CPF: 11 dígitos ---
+// --- CPF: 11 dígitos + único ---
 
-type cpfValidator struct{}
+type cpfValidator struct {
+	repo AccountRepository
+}
 
-func (v *cpfValidator) Validate(_ context.Context, value string, _ *Session) error {
+func (v *cpfValidator) Validate(ctx context.Context, value string, _ *Session) error {
 	digits := onlyDigits(value)
 	if len(digits) != 11 {
 		return fmt.Errorf("CPF deve conter exatamente 11 dígitos (recebido: %d)", len(digits))
+	}
+	if v.repo.CPFExists(ctx, digits) {
+		return fmt.Errorf("CPF %s já está cadastrado no sistema", digits)
 	}
 	return nil
 }

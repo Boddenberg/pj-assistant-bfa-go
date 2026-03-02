@@ -22,9 +22,6 @@ var tracer = otel.Tracer("handler")
 
 // NewRouter creates the HTTP router with all routes and middleware.
 // Routes follow the API contract defined for the PJ Assistant frontend.
-//
-// O parâmetro chatSvc é opcional (pode ser nil). Quando presente,
-// a rota GET /v1/assistant/{customerId} fica disponível para chat com IA.
 func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatV2Svc *chatv2.Service, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
 	r := chi.NewRouter()
 
@@ -215,10 +212,9 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 				r.Put("/customers/{customerId}/representative", updateRepresentativeHandler(authSvc, logger))
 			})
 		}
-	})
-
-	// --- API v2 ---
-	r.Route("/v2", func(r chi.Router) {
+		// =============================================
+		// 11. Chat IA (onboarding orquestrado pelo BFA)
+		// =============================================
 		r.Post("/chat", chatv2.Handler(chatV2Svc, logger))
 		r.Post("/chat/{customerID}", chatv2.Handler(chatV2Svc, logger))
 	})

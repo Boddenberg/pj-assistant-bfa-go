@@ -23,10 +23,19 @@ type FrontendResponse struct {
 // --- BFA → Agent Python ---
 
 type AgentRequest struct {
-	CustomerID      string        `json:"customer_id"`
-	Query           string        `json:"query"`
-	History         []ChatMessage `json:"history"`
-	ValidationError string        `json:"validation_error"`
+	CustomerID      string          `json:"customer_id"`
+	Query           string          `json:"query"`
+	History         []ChatMessage   `json:"history"`
+	ValidationError string          `json:"validation_error"`
+	CollectedData   []CollectedItem `json:"collected_data"`
+}
+
+// CollectedItem representa um dado já validado pelo BFA.
+// Genérico — serve para qualquer jornada (onboarding, pix, etc).
+type CollectedItem struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	Validated bool   `json:"validated"`
 }
 
 // --- Agent Python → BFA ---
@@ -60,6 +69,77 @@ type Session struct {
 	CustomerID     string
 	History        []ChatMessage
 	OnboardingData map[string]string
+	ExpectedStep   string // BFA controla deterministicamente qual campo espera a seguir
+	Retries        int    // quantas tentativas inválidas consecutivas no step atual
+}
+
+const MaxRetries = 3
+
+// OnboardingSequence define a ordem DETERMINÍSTICA dos campos.
+// O BFA controla a sequência, NÃO o agente.
+var OnboardingSequence = []string{
+	"cnpj",
+	"razaoSocial",
+	"nomeFantasia",
+	"email",
+	"representanteName",
+	"representanteCpf",
+	"representantePhone",
+	"representanteBirthDate",
+	"password",
+	"passwordConfirmation",
+}
+
+// RequiredOnboardingFields são os campos obrigatórios para abrir uma conta PJ.
+var RequiredOnboardingFields = OnboardingSequence
+
+// NextStepAfter retorna o próximo step na sequência após o step dado.
+// Se for o último, retorna "completed".
+func NextStepAfter(current string) string {
+	for i, s := range OnboardingSequence {
+		if s == current {
+			if i+1 < len(OnboardingSequence) {
+				return OnboardingSequence[i+1]
+			}
+			return "completed"
+		}
+	}
+	return ""
+}
+
+// AdvanceStep avança para o próximo step e reseta o contador de retries.
+func (s *Session) AdvanceStep() {
+	s.ExpectedStep = NextStepAfter(s.ExpectedStep)
+	s.Retries = 0
+}
+
+// MissingFields retorna os campos obrigatórios que ainda não foram validados na sessão.
+func (s *Session) MissingFields() []string {
+	var missing []string
+	for _, field := range RequiredOnboardingFields {
+		if _, ok := s.OnboardingData[field]; !ok {
+			missing = append(missing, field)
+		}
+	}
+	return missing
+}
+
+// CollectedData converte os dados já validados da sessão em lista genérica de chave/valor.
+// Não expõe password/passwordConfirmation ao agente.
+func (s *Session) CollectedData() []CollectedItem {
+	items := make([]CollectedItem, 0)
+	for key, value := range s.OnboardingData {
+		// Não enviar senhas ao agente
+		if key == "password" || key == "passwordConfirmation" {
+			continue
+		}
+		items = append(items, CollectedItem{
+			Key:       key,
+			Value:     value,
+			Validated: true,
+		})
+	}
+	return items
 }
 
 // helper para ponteiro de string
