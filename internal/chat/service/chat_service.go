@@ -204,8 +204,9 @@ func (s *ChatService) defaultHandle(ctx context.Context, chatCtx *domain.ChatCon
 		Context:          agentResp.Context,
 		Intent:           agentResp.Intent,
 		Confidence:       agentResp.Confidence,
-		CurrentField:     agentResp.CurrentField,
+		Step:             agentResp.Step,
 		FieldValue:       agentResp.FieldValue,
+		NextStep:         agentResp.NextStep,
 		SuggestedActions: agentResp.SuggestedActions,
 	}, nil
 }

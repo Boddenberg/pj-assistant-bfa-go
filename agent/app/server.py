@@ -169,9 +169,9 @@ async def invoke_agent(request: AgentRequest) -> AgentResponse:
 # ============================================================
 # POST /v1/chat — rota chamada pelo BFA (Go)
 # ============================================================
-# Contrato v8.0.0:
-#   Request:  {"query": "...", "customer_id": "...", "history": [...], "validation_error": "..."}
-#   Response: {"answer": "...", "current_field": "cnpj"|null, "field_value": "..."|null, ...}
+# Contrato v9.0.0:
+#   Request:  {"query": "...", "customer_id": "...", "history": [{step, validated}], "validation_error": "..."}
+#   Response: {"answer": "...", "step": "cnpj"|null, "field_value": "..."|null, "next_step": "..."|null, ...}
 #
 # Dois modos:
 #   1. context != "onboarding" → RAG + LLM genérico (perguntas gerais)
@@ -203,57 +203,68 @@ Responda a pergunta do cliente de forma direta e útil."""
 ONBOARDING_SYSTEM_PROMPT = """Você é o assistente virtual BFA que guia clientes na abertura de conta PJ do Itaú.
 
 ## Sua função:
-Você conduz a conversa pedindo UM CAMPO POR VEZ na ordem fixa abaixo.
+Você conduz a conversa de abertura de conta pedindo UM CAMPO POR VEZ.
 Você NUNCA valida os dados — isso é responsabilidade do BFA (Go).
-Você apenas recebe o que o cliente digitou e devolve o valor cru.
+Você apenas interpreta o que o cliente digitou e devolve o valor cru.
 
-## Sequência de campos (SEMPRE nesta ordem):
-1. cnpj — CNPJ da empresa
-2. razaoSocial — Razão Social (nome oficial)
-3. nomeFantasia — Nome Fantasia (nome comercial)
-4. email — E-mail de contato
-5. representanteName — Nome completo do representante
-6. representanteCpf — CPF do representante
-7. representantePhone — Telefone do representante
-8. representanteBirthDate — Data de nascimento (DD/MM/AAAA)
-9. password — Senha de 6 dígitos numéricos
-10. passwordConfirmation — Confirmação da senha
+## Sequência de campos (steps) — SEMPRE nesta ordem:
+1. cnpj — CNPJ da empresa (14 dígitos, com ou sem pontuação)
+2. razaoSocial — Razão Social (nome oficial da empresa, mínimo 3 caracteres)
+3. nomeFantasia — Nome Fantasia (nome comercial, mínimo 2 caracteres)
+4. email — E-mail de contato (deve conter @ e domínio válido)
+5. representanteName — Nome completo do representante legal (mínimo 5 caracteres)
+6. representanteCpf — CPF do representante (11 dígitos, com ou sem pontuação)
+7. representantePhone — Telefone do representante (mínimo 10 dígitos, formato (XX) XXXXX-XXXX)
+8. representanteBirthDate — Data de nascimento (formato DD/MM/AAAA, 18+ anos)
+9. password — Senha de exatamente 6 dígitos numéricos (sem letras)
+10. passwordConfirmation — Confirmação: repetir a mesma senha de 6 dígitos
 
-## ESTADO ATUAL (DETERMINADO PELO BFA — SIGA EXATAMENTE):
-- Campo atual que você DEVE tratar: **{expected_field}**
-- Campos já coletados com sucesso: {collected_fields}
+## Como usar o histórico enriquecido:
+O BFA envia o histórico com step e validated para cada turno:
+- step: qual campo aquele turno se refere
+- validated: true (BFA aceitou) ou false (BFA rejeitou)
 
-## Regras CRÍTICAS:
-- O campo que você DEVE usar em current_field é EXATAMENTE: "{expected_field}"
-- Se expected_field é "welcome", dê boas-vindas e peça o CNPJ. current_field = "welcome", field_value = null.
-- Se expected_field é "completed", parabenize. current_field = "completed", field_value = null.
-- Para qualquer outro expected_field: o cliente está enviando o valor desse campo. Extraia o valor da query e retorne.
-- NUNCA mude o current_field para outro valor diferente de expected_field.
-- NUNCA pule campos ou mude a ordem.
-- Seja amigável, use emojis ocasionalmente, e dê dicas sobre o formato esperado.
-- Para senha, diga que deve ser exatamente 6 dígitos numéricos.
-- Para confirmação de senha, peça para repetir a mesma senha.
+Analise o histórico para saber:
+- Quais campos já foram coletados (validated=true)
+- Qual campo foi rejeitado por último (validated=false)
+- Qual é o próximo campo a ser pedido
+
+## Regra de retries (MAX_RETRIES = 3):
+Se um campo foi rejeitado (validated=false) e aparece 3 vezes seguidas com validated=false,
+NÃO peça novamente. Sugira que o cliente entre em contato com o atendente.
 
 ## Regra de validation_error:
-Se receber um validation_error, significa que o BFA rejeitou o último campo.
-Nesse caso, peça o MESMO CAMPO novamente, explicando o erro de forma amigável.
+Se receber um validation_error, significa que o BFA ACABOU de rejeitar o último campo.
+Nesse caso, peça o MESMO campo novamente, explicando o erro de forma amigável.
 NÃO avance para o próximo campo.
+
+## Regras de comportamento:
+- Seja amigável, profissional e use emojis ocasionalmente (sem exagero)
+- Dê dicas claras sobre o formato esperado de cada campo
+- Para senhas, diga que devem ser EXATAMENTE 6 dígitos numéricos
+- Para confirmação de senha, peça para repetir a mesma senha
+- NUNCA pule campos ou mude a ordem
+- NUNCA invente dados — use EXATAMENTE o que o cliente digitou
 
 ## Formato de resposta (JSON OBRIGATÓRIO):
 Responda SEMPRE em JSON válido com esta estrutura:
 ```json
 {{{{
   "answer": "Sua mensagem amigável para o cliente",
-  "current_field": "{expected_field}",
-  "field_value": "valor_extraido_ou_null"
+  "step": "nome_do_campo_atual_ou_null",
+  "field_value": "valor_extraido_ou_null",
+  "next_step": "proximo_campo_ou_null"
 }}}}
 ```
 
-field_value:
-- null quando é a primeira mensagem (welcome) ou quando está PEDINDO o campo
-- O valor que o cliente digitou quando está RECEBENDO a resposta do campo
+Regras de preenchimento:
+- Na primeira mensagem (boas-vindas): step=null, field_value=null, next_step="cnpj"
+- Quando está PEDINDO um campo: step=nome_do_campo, field_value=null, next_step=null
+- Quando está RECEBENDO resposta: step=nome_do_campo, field_value=valor_extraido, next_step=proximo_campo
+- No último campo (passwordConfirmation aceito): step="passwordConfirmation", field_value=valor, next_step="completed"
+- Se validation_error presente: step=mesmo_campo, field_value=null, next_step=null
 
-## Histórico da Conversa:
+## Histórico da Conversa (enriquecido):
 {history_text}
 
 ## Erro de validação (se houver):
@@ -322,16 +333,22 @@ def _handle_onboarding_chat(
     customer_id: str,
 ) -> ChatResponse:
     """
-    Processa mensagem de onboarding: pede campos um a um via LLM.
-    O LLM retorna JSON com current_field + field_value.
-    O BFA envia expected_field para que o LLM saiba exatamente qual campo tratar.
+    Processa mensagem de onboarding (contrato v9).
+    O LLM retorna JSON com step + field_value + next_step.
+    O BFA envia history enriquecido (com step/validated por turno).
     """
-    # Build history text
+    # Build enriched history text (v9 — includes step/validated)
     history_text = "Sem histórico anterior."
     if request.history:
         lines = []
         for h in request.history[-5:]:
-            lines.append(f"Cliente: {h.query}")
+            step_info = ""
+            if h.step is not None:
+                step_info = f" [step={h.step}"
+                if h.validated is not None:
+                    step_info += f", validated={'✓' if h.validated else '✗'}"
+                step_info += "]"
+            lines.append(f"Cliente: {h.query}{step_info}")
             lines.append(f"Assistente: {h.answer}")
         history_text = "\n".join(lines)
 
@@ -340,23 +357,15 @@ def _handle_onboarding_chat(
     if request.validation_error:
         validation_error = f"ERRO DO BFA: {request.validation_error}\nPeça o MESMO campo novamente explicando o erro."
 
-    # Expected field from BFA (deterministic state)
-    expected_field = request.expected_field or "welcome"
-    collected_fields = request.collected_fields or []
-    collected_str = ", ".join(collected_fields) if collected_fields else "nenhum"
-
     prompt = ONBOARDING_SYSTEM_PROMPT.format(
         history_text=history_text,
         validation_error=validation_error,
-        expected_field=expected_field,
-        collected_fields=collected_str,
     )
 
     reasoning_steps = [
         "Intent: open_account",
         "Contexto: onboarding",
-        f"Expected field: {expected_field}",
-        f"Collected fields: {collected_str}",
+        f"History turns: {len(request.history)}",
         f"Validation error: {request.validation_error or 'nenhum'}",
     ]
 
@@ -388,14 +397,16 @@ def _handle_onboarding_chat(
                 total_tokens=usage.get("total_tokens", 0),
             )
 
-        # Parse JSON from LLM response
+        # Parse JSON from LLM response (v9: step + next_step)
         parsed = _parse_onboarding_json(raw_answer)
         answer = parsed.get("answer", raw_answer)
-        current_field = parsed.get("current_field")
+        step = parsed.get("step")
         field_value = parsed.get("field_value")
+        next_step = parsed.get("next_step")
 
-        reasoning_steps.append(f"current_field: {current_field}")
+        reasoning_steps.append(f"step: {step}")
         reasoning_steps.append(f"field_value: {field_value}")
+        reasoning_steps.append(f"next_step: {next_step}")
 
     except Exception as e:
         logger.error("onboarding.llm_failed", error=str(e))
@@ -403,8 +414,9 @@ def _handle_onboarding_chat(
             "Desculpe, tive um problema ao processar sua mensagem. "
             "Por favor, tente novamente."
         )
-        current_field = None
+        step = None
         field_value = None
+        next_step = None
         reasoning_steps.append(f"Erro LLM: {e}")
 
     # Metrics
@@ -424,8 +436,9 @@ def _handle_onboarding_chat(
         context="onboarding",
         intent="open_account",
         confidence=1.0,
-        current_field=current_field,
+        step=step,
         field_value=field_value,
+        next_step=next_step,
         suggested_actions=[],
         metadata=ChatMetadata(
             reasoning=reasoning_steps,
@@ -464,8 +477,7 @@ def _parse_onboarding_json(raw: str) -> dict:
                 pass
 
     logger.warning("onboarding.json_parse_failed", raw_preview=text[:200])
-    return {"answer": raw, "current_field": None, "field_value": None}
-    return actions.get(intent, ["Falar com atendente", "Ver ajuda"])
+    return {"answer": raw, "step": None, "field_value": None, "next_step": None}
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
@@ -474,7 +486,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     Chat endpoint — chamado pelo BFA (Go) para processar mensagens do usuário.
 
     Dois modos:
-    1. context == "onboarding" → fluxo conversacional com current_field/field_value
+    1. context == "onboarding" → fluxo conversacional com step/field_value/next_step
     2. Qualquer outro context → RAG + LLM genérico
     """
     customer_id = request.customer_id or "anonymous"
@@ -605,8 +617,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
             context=context,
             intent=intent,
             confidence=confidence,
-            current_field=None,
+            step=None,
             field_value=None,
+            next_step=None,
             suggested_actions=suggested_actions,
             metadata=ChatMetadata(
                 reasoning=reasoning_steps,

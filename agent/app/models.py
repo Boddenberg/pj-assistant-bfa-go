@@ -85,22 +85,22 @@ class AgentState(BaseModel):
 
 
 class ChatHistoryEntry(BaseModel):
-    """Uma troca de mensagem anterior na conversa."""
+    """Uma troca de mensagem anterior na conversa (enriquecida v9)."""
 
     query: str
     answer: str
+    step: str | None = None
+    validated: bool | None = None
 
 
 class ChatRequest(BaseModel):
-    """Request do BFA (Go) via POST /v1/chat."""
+    """Request do BFA (Go) via POST /v1/chat (contrato v9)."""
 
     query: str
     customer_id: str = "anonymous"
     context: str = ""
     history: list[ChatHistoryEntry] = Field(default_factory=list)
     validation_error: str = ""
-    expected_field: str = ""
-    collected_fields: list[str] = Field(default_factory=list)
     profile: dict | None = None
     transactions: list[dict] = Field(default_factory=list)
 
@@ -115,15 +115,16 @@ class ChatMetadata(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    """Response devolvida ao BFA (Go)."""
+    """Response devolvida ao BFA (Go) — contrato v9."""
 
     customer_id: str = ""
     answer: str
     context: str | None = None
     intent: str | None = None
     confidence: float = 0.0
-    current_field: str | None = None
+    step: str | None = None
     field_value: str | None = None
+    next_step: str | None = None
     suggested_actions: list[str] = Field(default_factory=list)
     metadata: ChatMetadata = Field(default_factory=ChatMetadata)
     timestamp: str = ""

@@ -1,6 +1,8 @@
-# Frontend — Contrato do Chat v8.0.0
+# Frontend — Contrato do Chat v9.0.0
 
 > Guia para integração do chat com onboarding no frontend React/Next.js.
+>
+> **Breaking changes vs v8:** `current_field` → `step` + `next_step`, history enriquecido com `step`/`validated`.
 
 ---
 
@@ -15,13 +17,16 @@ POST /v1/chat/{customerId} → cliente autenticado
 
 ## 1. Request (front → BFA)
 
-**Não mudou.** Continua igual:
-
 ```json
 {
   "query": "Quero abrir minha conta PJ",
   "history": [
-    { "query": "Olá", "answer": "Olá! Como posso ajudar?" }
+    {
+      "query": "Olá",
+      "answer": "Olá! Como posso ajudar?",
+      "step": null,
+      "validated": null
+    }
   ]
 }
 ```
@@ -31,18 +36,23 @@ POST /v1/chat/{customerId} → cliente autenticado
 | `query` | `string` | ✅ | Mensagem do usuário |
 | `history` | `HistoryEntry[]` | ❌ | Últimas mensagens da conversa (máx 5 são usadas) |
 
+### HistoryEntry (v9 — enriquecido)
+
 ```typescript
 interface HistoryEntry {
   query: string;
   answer: string;
+  step: string | null;      // ✨ NOVO — qual campo do onboarding este turno representa
+  validated: boolean | null; // ✨ NOVO — true = aceito, false = rejeitado, null = N/A
 }
 ```
+
+> **Nota:** O frontend DEVE incluir `step` e `validated` no histórico quando devolver.
+> O BFA enriquece esses campos automaticamente na resposta — basta persistir e reenviar.
 
 ---
 
 ## 2. Response (BFA → front)
-
-### Campos novos (v8.0.0)
 
 ```typescript
 interface ChatResponse {
@@ -51,11 +61,12 @@ interface ChatResponse {
   intent: string | null;             // "open_account" | "pix_transfer" | ...
   confidence: number;                // 0.0 a 1.0
 
-  // ✨ NOVOS
-  current_field: string | null;      // Qual campo do onboarding está sendo tratado
+  // ✨ v9.0.0
+  step: string | null;               // Qual campo do onboarding está sendo tratado
   field_value: string | null;        // Valor extraído da resposta do usuário
-  account_data: AccountData | null;  // Dados da conta criada (só no completed)
+  next_step: string | null;          // Próximo campo que será pedido
 
+  account_data: AccountData | null;  // Dados da conta criada (só quando step="completed")
   suggested_actions: string[];       // Sugestões de ações
 }
 
@@ -66,14 +77,21 @@ interface AccountData {
 }
 ```
 
+### Mudanças v8 → v9
+
+| v8 | v9 | Descrição |
+|----|-----|-----------|
+| `current_field` | `step` | Renomeado |
+| _(não existia)_ | `next_step` | Indica qual campo vem depois |
+| `history[].query/answer` | `history[].query/answer/step/validated` | History enriquecido |
+
 ---
 
-## 3. Valores de `current_field`
+## 3. Valores de `step`
 
 | Valor | Significado | O que o front faz |
 |-------|-------------|-------------------|
 | `null` | **Não é onboarding.** Conversa normal. | Exibir `answer` normalmente |
-| `"welcome"` | Onboarding iniciou. Boas-vindas. | Exibir `answer`. Opcionalmente: mostrar progresso 0% |
 | `"cnpj"` | Pedindo/recebendo CNPJ | Exibir `answer` + progresso 10% |
 | `"razaoSocial"` | Pedindo/recebendo Razão Social | Exibir `answer` + progresso 20% |
 | `"nomeFantasia"` | Pedindo/recebendo Nome Fantasia | Exibir `answer` + progresso 30% |
@@ -86,6 +104,14 @@ interface AccountData {
 | `"passwordConfirmation"` | Pedindo confirmação de senha | Exibir `answer` + progresso 95%. Input type=password |
 | `"completed"` | **Conta criada!** 🎉 | Exibir `answer` + `account_data`. Redirecionar p/ login |
 | `"error"` | Erro no cadastro (ex: CNPJ duplicado) | Exibir `answer` com mensagem de erro |
+
+### Valores de `next_step`
+
+| Valor | Significado |
+|-------|-------------|
+| `null` | Sem próximo campo (conversa normal, ou esperando resposta) |
+| `"cnpj"` ... `"passwordConfirmation"` | Próximo campo a ser pedido |
+| `"completed"` | Todos os campos coletados — conta será criada |
 
 ---
 
@@ -103,15 +129,22 @@ const data: ChatResponse = await response.json();
 // Sempre exibir a mensagem
 addMessage({ role: 'assistant', text: data.answer });
 
-// Atualizar histórico
-history.push({ query: userMessage, answer: data.answer });
+// ✨ v9: Atualizar histórico COM step + validated (o BFA já envia enriquecido)
+// O front NÃO precisa calcular step/validated — basta persistir o que o BFA devolveu
+// e reenviar no próximo request.
+history.push({
+  query: userMessage,
+  answer: data.answer,
+  step: data.step,         // pode ser null
+  validated: null,         // o front não sabe se foi validado; o BFA controla isso
+});
 
-// Lógica condicional por current_field
-if (data.current_field === null) {
+// Lógica condicional por step (era current_field)
+if (data.step === null) {
   // Conversa normal, nada especial
 }
 
-else if (data.current_field === 'completed' && data.account_data) {
+else if (data.step === 'completed' && data.account_data) {
   // 🎉 Conta criada — mostrar tela de sucesso
   showAccountCreatedScreen({
     agencia: data.account_data.agencia,
@@ -120,12 +153,12 @@ else if (data.current_field === 'completed' && data.account_data) {
   });
 }
 
-else if (data.current_field === 'error') {
+else if (data.step === 'error') {
   // Erro no cadastro — exibir alerta
   showErrorAlert(data.answer);
 }
 
-else if (data.current_field === 'password' || data.current_field === 'passwordConfirmation') {
+else if (data.step === 'password' || data.step === 'passwordConfirmation') {
   // Campo de senha — mudar input para type=password
   setInputType('password');
 }
@@ -133,7 +166,7 @@ else if (data.current_field === 'password' || data.current_field === 'passwordCo
 else {
   // Campo de onboarding em andamento — atualizar barra de progresso
   setInputType('text');
-  updateProgress(data.current_field);
+  updateProgress(data.step);
 }
 ```
 
@@ -148,10 +181,10 @@ const ONBOARDING_FIELDS = [
   'representanteBirthDate', 'password', 'passwordConfirmation',
 ];
 
-function getProgress(currentField: string | null): number {
-  if (!currentField || currentField === 'welcome') return 0;
-  if (currentField === 'completed') return 100;
-  const idx = ONBOARDING_FIELDS.indexOf(currentField);
+function getProgress(step: string | null): number {
+  if (!step) return 0;
+  if (step === 'completed') return 100;
+  const idx = ONBOARDING_FIELDS.indexOf(step);
   return idx >= 0 ? Math.round(((idx + 1) / ONBOARDING_FIELDS.length) * 100) : 0;
 }
 
@@ -167,7 +200,7 @@ function getProgress(currentField: string | null): number {
 
 ## 6. Tela de Sucesso (quando `completed`)
 
-Quando `current_field === "completed"`, o `account_data` contém:
+Quando `step === "completed"`, o `account_data` contém:
 
 ```json
 {
@@ -182,7 +215,7 @@ Quando `current_field === "completed"`, o `account_data` contém:
 Exemplo:
 
 ```tsx
-{data.current_field === 'completed' && data.account_data && (
+{data.step === 'completed' && data.account_data && (
   <div className="success-card">
     <h2>🎉 Conta criada com sucesso!</h2>
     <div className="account-info">
@@ -198,24 +231,28 @@ Exemplo:
 
 ---
 
-## 7. Resumo das Mudanças
+## 7. Resumo das Mudanças v8 → v9
 
-| O que | Antes | Agora |
-|-------|-------|-------|
-| `current_field` | ❌ Não existia | ✅ Identifica o campo do onboarding |
-| `field_value` | ❌ Não existia | ✅ Valor extraído (uso interno, front pode ignorar) |
-| `account_data` | ❌ Não existia | ✅ Dados da conta quando `completed` |
-| Request | `{query, history}` | **Sem mudança** |
+| O que | v8 | v9 |
+|-------|-----|-----|
+| Campo de rastreio | `current_field` | `step` |
+| Próximo campo | _(não existia)_ | `next_step` |
+| History entries | `{query, answer}` | `{query, answer, step, validated}` |
+| `account_data` | ✅ | ✅ (sem mudança) |
+| Request body | `{query, history}` | `{query, history}` (sem mudança, mas history agora é enriquecido) |
 | `answer` | Texto livre | **Sem mudança** — sempre contém a mensagem para o usuário |
-| Registro | Separado em `POST /v1/auth/register` | **Automático** pelo chat quando todos os campos são validados |
+| Registro | Automático pelo chat | **Sem mudança** |
 
 ---
 
-## 8. Checklist do Front
+## 8. Checklist do Front (v9)
 
-- [ ] Tipar `ChatResponse` com `current_field`, `field_value`, `account_data`
-- [ ] Quando `current_field === "completed"` + `account_data` → exibir tela de sucesso
-- [ ] Quando `current_field === "password"` ou `"passwordConfirmation"` → input type=password
-- [ ] Quando `current_field === "error"` → exibir alerta de erro
-- [ ] (Opcional) Barra de progresso baseada no `current_field`
-- [ ] (Opcional) Ícones/labels por campo (🏢 CNPJ, 📧 Email, 🔒 Senha, etc.)
+- [ ] Renomear `current_field` → `step` em todos os tipos e lógica
+- [ ] Adicionar `next_step` ao tipo `ChatResponse`
+- [ ] Atualizar `HistoryEntry` com `step: string | null` e `validated: boolean | null`
+- [ ] Persistir `step`/`validated` no history e reenviar no próximo request
+- [ ] Quando `step === "completed"` + `account_data` → exibir tela de sucesso
+- [ ] Quando `step === "password"` ou `"passwordConfirmation"` → input type=password
+- [ ] Quando `step === "error"` → exibir alerta de erro
+- [ ] (Opcional) Barra de progresso baseada no `step`
+- [ ] (Opcional) Usar `next_step` para pré-carregar labels/ícones do próximo campo

@@ -1,29 +1,34 @@
 // Package service — chat_strategy_onboarding.go implementa a strategy
-// de abertura de conta PJ (onboarding) 100% determinística.
+// de abertura de conta PJ (onboarding) via chat.
 //
 // ============================================================
-// CONTRATO v9.0.0 — Onboarding sem IA
+// CONTRATO v9.0.0 — Onboarding com IA conversacional
 // ============================================================
 //
-// O BFA conduz toda a conversa de onboarding localmente:
-//   - Mensagens pré-definidas para cada campo (boas-vindas, perguntas, confirmações)
-//   - Validação campo a campo com regras fixas
-//   - Criação da conta no final via AuthStore
+// O agente Python é a camada conversacional — interpreta linguagem natural,
+// guia o cliente campo a campo e gera mensagens amigáveis.
 //
-// A IA é usada APENAS como fallback quando a validação rejeita o campo,
-// para gerar uma explicação mais amigável do erro (opcional).
-// Se o fallback falhar, o BFA usa a mensagem de erro padrão.
+// O BFA (Go) é a camada de negócio — valida formatos, aplica regras,
+// persiste dados e controla o fluxo.
 //
-// Sequência de campos (ordem fixa):
+// Fluxo por turno:
+//  1. BFA recebe query do frontend
+//  2. BFA envia query + history enriquecido (step/validated) ao agente
+//  3. Agente responde com step + field_value + next_step + answer
+//  4. BFA valida o campo (se aplicável)
+//  5. BFA enriquece o history com step + validated (true/false)
+//  6. Se validação falhar → reenvia ao agente com validation_error
+//  7. Se validação passar → persiste campo, devolve answer
+//  8. Se next_step == "completed" → cria a conta
+//
+// O agente controla retries automaticamente (MAX_RETRIES = 3).
+// O BFA NÃO precisa contar retries — o agente faz isso via history.
+//
+// Sequência de steps:
 //
 //	welcome → cnpj → razaoSocial → nomeFantasia → email
 //	→ representanteName → representanteCpf → representantePhone
 //	→ representanteBirthDate → password → passwordConfirmation → completed
-//
-// IMPORTANTE: essa strategy NÃO substitui o POST /v1/auth/register.
-// O POST /v1/auth/register continua existindo para quem quiser
-// criar conta enviando todos os dados de uma vez.
-// Essa strategy é para o fluxo CONVERSACIONAL via chat.
 package service
 
 import (
@@ -49,84 +54,14 @@ import (
 const bcryptCost = 10
 
 // ============================================================
-// Mensagens pré-definidas — zero IA
-// ============================================================
-
-// fieldPrompt contém a mensagem que pede cada campo ao usuário.
-var fieldPrompt = map[string]string{
-	"cnpj": "Para começar, me informe o **CNPJ** da sua empresa 🏢\n\n" +
-		"Pode digitar com ou sem pontuação (ex: 12.345.678/0001-90 ou 12345678000190).",
-
-	"razaoSocial": "Agora me diga a **Razão Social** da empresa 📋\n\n" +
-		"É o nome oficial que consta no contrato social.",
-
-	"nomeFantasia": "Qual o **Nome Fantasia** da empresa? 🏷️\n\n" +
-		"É o nome comercial, como os clientes conhecem a empresa.",
-
-	"email": "Informe o **e-mail de contato** da empresa 📧\n\n" +
-		"Esse e-mail será usado para comunicações importantes sobre a conta.",
-
-	"representanteName": "Agora precisamos dos dados do representante legal.\n\n" +
-		"Qual o **nome completo** do representante? 👤",
-
-	"representanteCpf": "Informe o **CPF** do representante 🪪\n\n" +
-		"Pode digitar com ou sem pontuação (ex: 123.456.789-00 ou 12345678900).",
-
-	"representantePhone": "Qual o **telefone** do representante? 📱\n\n" +
-		"Formato: (XX) XXXXX-XXXX",
-
-	"representanteBirthDate": "Qual a **data de nascimento** do representante? 🎂\n\n" +
-		"Formato: DD/MM/AAAA",
-
-	"password": "Quase lá! Crie uma **senha numérica de 6 dígitos** 🔐\n\n" +
-		"Essa será a senha da sua conta. Use apenas números.",
-
-	"passwordConfirmation": "Por favor, **confirme a senha** digitando os mesmos 6 dígitos 🔐",
-}
-
-// fieldConfirmation contém a mensagem de confirmação quando o campo é aceito.
-var fieldConfirmation = map[string]string{
-	"cnpj":                   "CNPJ recebido! ✅",
-	"razaoSocial":            "Razão Social registrada! ✅",
-	"nomeFantasia":           "Nome Fantasia anotado! ✅",
-	"email":                  "E-mail confirmado! ✅",
-	"representanteName":      "Nome do representante registrado! ✅",
-	"representanteCpf":       "CPF do representante confirmado! ✅",
-	"representantePhone":     "Telefone registrado! ✅",
-	"representanteBirthDate": "Data de nascimento confirmada! ✅",
-	"password":               "Senha cadastrada! ✅",
-	"passwordConfirmation":   "Senha confirmada! ✅",
-}
-
-// fieldLabels mapeia campo → descrição amigável para logs e mensagens.
-var fieldLabels = map[string]string{
-	"cnpj":                   "CNPJ",
-	"razaoSocial":            "Razão Social",
-	"nomeFantasia":           "Nome Fantasia",
-	"email":                  "e-mail de contato",
-	"representanteName":      "nome completo do representante",
-	"representanteCpf":       "CPF do representante",
-	"representantePhone":     "telefone do representante",
-	"representanteBirthDate": "data de nascimento do representante (DD/MM/AAAA)",
-	"password":               "senha de 6 dígitos numéricos",
-	"passwordConfirmation":   "confirmação da senha",
-}
-
-// welcomeMessage é a mensagem de boas-vindas do onboarding.
-const welcomeMessage = "Olá! 👋 Que bom que você quer abrir uma **conta PJ** no Itaú!\n\n" +
-	"Vou precisar de algumas informações para criar sua conta. " +
-	"São 10 campos simples — vamos lá?\n\n"
-
-// ============================================================
-// OnboardingStrategy — 100% determinística, IA só no fallback
+// OnboardingStrategy
 // ============================================================
 
 // OnboardingStrategy implementa ChatStrategy para o fluxo de abertura
-// de conta PJ. Todo o caminho feliz é determinístico (sem IA).
-// A IA é chamada apenas como fallback para humanizar erros de validação.
+// de conta PJ. Chama o agente em toda interação e valida cada campo.
 type OnboardingStrategy struct {
-	agentClient port.ChatAgentCaller // usado APENAS como fallback em erros
-	authStore   mainport.AuthStore   // nil quando Supabase não configurado
+	agentClient port.ChatAgentCaller
+	authStore   mainport.AuthStore
 	logger      *zap.Logger
 
 	mu       sync.RWMutex
@@ -160,12 +95,9 @@ func (s *OnboardingStrategy) CanHandle(intent string, customerID string) bool {
 }
 
 // ============================================================
-// Handle — ponto de entrada (100% determinístico)
+// Handle — ponto de entrada
 // ============================================================
 
-// Handle processa uma mensagem no contexto de abertura de conta.
-// Todo o caminho feliz é local — sem chamada ao Agent Python.
-// A IA só é chamada quando a validação falha, como fallback.
 func (s *OnboardingStrategy) Handle(ctx context.Context, chatCtx *domain.ChatContext) (*domain.ChatResponse, error) {
 	ctx, span := chatTracer.Start(ctx, "OnboardingStrategy.Handle")
 	defer span.End()
@@ -179,181 +111,224 @@ func (s *OnboardingStrategy) Handle(ctx context.Context, chatCtx *domain.ChatCon
 		zap.Int("collected", len(session.CollectedData)),
 	)
 
-	// ── Passo 1: Se onboarding não iniciou → boas-vindas + pedir CNPJ ──
-	if !session.Started {
-		session.Started = true
-		welcome := "welcome"
-		firstPrompt := fieldPrompt["cnpj"]
+	// Salva a query para o history
+	session.LastQuery = chatCtx.Query
 
-		s.logger.Info("onboarding: welcome",
-			zap.String("customer_id", chatCtx.CustomerID),
-		)
-
-		return &domain.ChatResponse{
-			Answer:       welcomeMessage + firstPrompt,
-			Context:      "onboarding",
-			Intent:       "open_account",
-			Confidence:   1.0,
-			CurrentField: &welcome,
-		}, nil
+	// Monta o request para o agente usando o history enriquecido da sessão
+	agentReq := &domain.ChatAgentRequest{
+		Query:      chatCtx.Query,
+		CustomerID: chatCtx.CustomerID,
+		Context:    "onboarding",
+		History:    session.EnrichedHistory,
 	}
 
-	// ── Passo 2: Qual campo estamos esperando? ──
-	expectedField := session.NextExpectedField()
-
-	s.logger.Info("onboarding: expecting field",
+	s.logger.Info("onboarding: calling agent",
 		zap.String("customer_id", chatCtx.CustomerID),
-		zap.String("expected_field", expectedField),
+		zap.Int("history_len", len(session.EnrichedHistory)),
 		zap.Strings("collected", session.CollectedFieldNames()),
 	)
 
-	// ── Passo 3: Já coletou tudo? → finalizar ──
-	if expectedField == "completed" {
-		return s.finalizeAccount(ctx, session, chatCtx.CustomerID)
-	}
-
-	// ── Passo 4: Pegar valor e validar ──
-	value := strings.TrimSpace(chatCtx.Query)
-	validationErr := s.validateField(expectedField, value, session)
-
-	if validationErr != nil {
-		// Campo rejeitado — usar IA como fallback para mensagem amigável
-		s.logger.Info("onboarding: field rejected",
-			zap.String("customer_id", chatCtx.CustomerID),
-			zap.String("field", expectedField),
-			zap.String("value", truncate(value, 30)),
-			zap.String("error", validationErr.Error()),
-		)
-
-		friendlyMsg := s.friendlyError(ctx, expectedField, value, validationErr, chatCtx)
-
-		return &domain.ChatResponse{
-			Answer:       friendlyMsg,
-			Context:      "onboarding",
-			Intent:       "open_account",
-			Confidence:   1.0,
-			CurrentField: &expectedField,
-		}, nil
-	}
-
-	// ── Passo 5: Campo aceito → formatar e persistir ──
-	if expectedField == "cnpj" {
-		value = formatCNPJ(onlyDigits(value))
-	} else if expectedField == "representanteCpf" {
-		value = formatCPF(onlyDigits(value))
-	}
-	session.CollectedData[expectedField] = value
-
-	s.logger.Info("onboarding: field accepted",
-		zap.String("customer_id", chatCtx.CustomerID),
-		zap.String("field", expectedField),
-		zap.String("value", truncate(value, 30)),
-		zap.Int("total_fields", len(session.CollectedData)),
-	)
-
-	// ── Passo 6: Último campo? → criar conta direto ──
-	if expectedField == "passwordConfirmation" {
-		s.logger.Info("onboarding: all fields collected, auto-finalizing",
-			zap.String("customer_id", chatCtx.CustomerID),
-		)
-		return s.finalizeAccount(ctx, session, chatCtx.CustomerID)
-	}
-
-	// ── Passo 7: Confirmação + pergunta do próximo campo ──
-	nextField := session.NextExpectedField()
-	confirmation := fieldConfirmation[expectedField]
-	nextPrompt := fieldPrompt[nextField]
-
-	answer := confirmation + "\n\n" + nextPrompt
-
-	return &domain.ChatResponse{
-		Answer:       answer,
-		Context:      "onboarding",
-		Intent:       "open_account",
-		Confidence:   1.0,
-		CurrentField: &expectedField,
-		FieldValue:   &value,
-	}, nil
-}
-
-// ============================================================
-// friendlyError — fallback com IA para humanizar erros
-// ============================================================
-
-// friendlyError tenta chamar a IA para gerar uma mensagem amigável
-// explicando o erro de validação. Se a IA falhar (timeout, indisponível),
-// retorna uma mensagem padrão formatada.
-func (s *OnboardingStrategy) friendlyError(
-	ctx context.Context,
-	field string,
-	value string,
-	validationErr error,
-	chatCtx *domain.ChatContext,
-) string {
-	// Mensagem padrão (sem IA) — sempre funciona, zero latência
-	defaultMsg := fmt.Sprintf(
-		"⚠️ %s\n\nPor favor, tente novamente.\n\n%s",
-		validationErr.Error(),
-		fieldPrompt[field],
-	)
-
-	// Se não tem agentClient, retorna a mensagem padrão
-	if s.agentClient == nil {
-		return defaultMsg
-	}
-
-	// Tenta usar a IA como fallback para uma resposta mais humana
-	agentReq := &domain.ChatAgentRequest{
-		Query:           value,
-		CustomerID:      chatCtx.CustomerID,
-		Context:         "onboarding_error",
-		History:         chatCtx.History,
-		ValidationError: validationErr.Error(),
-		ExpectedField:   field,
-		CollectedFields: session2CollectedNames(chatCtx.CustomerID, s),
-	}
-
-	s.logger.Info("onboarding: calling AI fallback for friendly error",
-		zap.String("customer_id", chatCtx.CustomerID),
-		zap.String("field", field),
-		zap.String("error", validationErr.Error()),
-	)
-
+	// Chama o agente
 	agentResp, err := s.agentClient.SendChat(ctx, agentReq)
 	if err != nil {
-		s.logger.Warn("onboarding: AI fallback failed, using default message",
+		s.logger.Error("onboarding: agent call failed",
 			zap.String("customer_id", chatCtx.CustomerID),
 			zap.Error(err),
 		)
-		return defaultMsg
+		return nil, fmt.Errorf("onboarding agent call: %w", err)
 	}
 
-	if agentResp.Answer == "" {
-		return defaultMsg
-	}
-
-	s.logger.Info("onboarding: AI fallback succeeded",
+	s.logger.Info("onboarding: agent responded",
 		zap.String("customer_id", chatCtx.CustomerID),
-		zap.String("field", field),
+		zap.String("step", stringPtrOrNil(agentResp.Step)),
+		zap.String("field_value", stringPtrOrNil(agentResp.FieldValue)),
+		zap.String("next_step", stringPtrOrNil(agentResp.NextStep)),
 		zap.Int("answer_len", len(agentResp.Answer)),
 	)
 
-	return agentResp.Answer
-}
-
-// session2CollectedNames retorna os nomes dos campos já coletados.
-func session2CollectedNames(customerID string, s *OnboardingStrategy) []string {
-	s.mu.RLock()
-	session, ok := s.sessions[customerID]
-	s.mu.RUnlock()
-	if !ok {
-		return nil
-	}
-	return session.CollectedFieldNames()
+	// Processa a resposta
+	return s.processAgentResponse(ctx, agentResp, session, chatCtx)
 }
 
 // ============================================================
-// validateField — validação por campo (regras do contrato v8)
+// processAgentResponse — decide o que fazer com step
+// ============================================================
+
+func (s *OnboardingStrategy) processAgentResponse(
+	ctx context.Context,
+	resp *domain.ChatAgentResponse,
+	session *domain.OnboardingSession,
+	chatCtx *domain.ChatContext,
+) (*domain.ChatResponse, error) {
+
+	// Se step é nil → não é onboarding, tratar normalmente
+	if resp.Step == nil {
+		return s.buildResponse(resp), nil
+	}
+
+	step := *resp.Step
+
+	switch step {
+	case "welcome":
+		// Agente deu boas-vindas → marcar sessão como iniciada
+		session.Started = true
+
+		// Adicionar turno ao history SEM step (welcome)
+		session.EnrichedHistory = append(session.EnrichedHistory, domain.HistoryEntry{
+			Query:     session.LastQuery,
+			Answer:    resp.Answer,
+			Step:      nil,
+			Validated: nil,
+		})
+
+		s.logger.Info("onboarding: welcome received",
+			zap.String("customer_id", chatCtx.CustomerID),
+		)
+		return s.buildResponse(resp), nil
+
+	case "completed":
+		// Agente sinalizou que terminou → finalizar cadastro
+		s.logger.Info("onboarding: completed signal received, finalizing",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.Int("fields_count", len(session.CollectedData)),
+		)
+		return s.finalizeAccount(ctx, resp, session, chatCtx.CustomerID)
+
+	default:
+		// Campo de dados → validar
+		return s.handleFieldValidation(ctx, resp, session, chatCtx)
+	}
+}
+
+// ============================================================
+// handleFieldValidation — valida o campo e persiste ou reenvia
+// ============================================================
+
+func (s *OnboardingStrategy) handleFieldValidation(
+	ctx context.Context,
+	resp *domain.ChatAgentResponse,
+	session *domain.OnboardingSession,
+	chatCtx *domain.ChatContext,
+) (*domain.ChatResponse, error) {
+
+	step := *resp.Step
+
+	// Se field_value é nil → agente está pedindo o campo pela primeira vez
+	if resp.FieldValue == nil {
+		s.logger.Info("onboarding: agent asking for field (no value yet)",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("step", step),
+		)
+		return s.buildResponse(resp), nil
+	}
+
+	value := *resp.FieldValue
+
+	// Fallback: se o agent mascarou o valor (PII protection)
+	if strings.Contains(value, "***") || strings.Contains(value, "REDACTED") || strings.Contains(value, "[") {
+		s.logger.Info("onboarding: field_value masked, using raw query",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("step", step),
+			zap.String("masked_value", truncate(value, 30)),
+		)
+		value = strings.TrimSpace(chatCtx.Query)
+	}
+
+	s.logger.Info("onboarding: validating field",
+		zap.String("customer_id", chatCtx.CustomerID),
+		zap.String("step", step),
+		zap.String("value", truncate(value, 20)),
+	)
+
+	// Valida o campo
+	validationErr := s.validateField(step, value, session)
+
+	if validationErr != nil {
+		// ── REJEITADO ──
+		s.logger.Info("onboarding: field rejected",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("step", step),
+			zap.String("error", validationErr.Error()),
+		)
+
+		// Adicionar turno ao history com validated=false
+		session.EnrichedHistory = append(session.EnrichedHistory, domain.HistoryEntry{
+			Query:     session.LastQuery,
+			Answer:    resp.Answer,
+			Step:      &step,
+			Validated: domain.BoolPtr(false),
+		})
+
+		// Reenviar ao agente com validation_error
+		retryReq := &domain.ChatAgentRequest{
+			Query:           session.LastQuery,
+			CustomerID:      chatCtx.CustomerID,
+			Context:         "onboarding",
+			History:         session.EnrichedHistory,
+			ValidationError: validationErr.Error(),
+		}
+
+		s.logger.Info("onboarding: retrying agent with validation_error",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("step", step),
+			zap.String("validation_error", validationErr.Error()),
+		)
+
+		retryResp, err := s.agentClient.SendChat(ctx, retryReq)
+		if err != nil {
+			s.logger.Error("onboarding: retry agent call failed",
+				zap.String("customer_id", chatCtx.CustomerID),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("onboarding retry: %w", err)
+		}
+
+		s.logger.Info("onboarding: retry agent responded",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.String("step", stringPtrOrNil(retryResp.Step)),
+			zap.Int("answer_len", len(retryResp.Answer)),
+		)
+
+		return s.buildResponse(retryResp), nil
+	}
+
+	// ── ACEITO ──
+
+	// Formatar CNPJ/CPF antes de persistir
+	if step == "cnpj" {
+		value = formatCNPJ(onlyDigits(value))
+	} else if step == "representanteCpf" {
+		value = formatCPF(onlyDigits(value))
+	}
+	session.CollectedData[step] = value
+
+	// Adicionar turno ao history com validated=true
+	session.EnrichedHistory = append(session.EnrichedHistory, domain.HistoryEntry{
+		Query:     session.LastQuery,
+		Answer:    resp.Answer,
+		Step:      &step,
+		Validated: domain.BoolPtr(true),
+	})
+
+	s.logger.Info("onboarding: field accepted",
+		zap.String("customer_id", chatCtx.CustomerID),
+		zap.String("step", step),
+		zap.Int("total_fields", len(session.CollectedData)),
+	)
+
+	// Se next_step == "completed" ou último campo aceito → finalizar
+	if (resp.NextStep != nil && *resp.NextStep == "completed") || step == "passwordConfirmation" {
+		s.logger.Info("onboarding: last field accepted, auto-finalizing",
+			zap.String("customer_id", chatCtx.CustomerID),
+		)
+		return s.finalizeAccount(ctx, resp, session, chatCtx.CustomerID)
+	}
+
+	return s.buildResponse(resp), nil
+}
+
+// ============================================================
+// validateField — validação por campo
 // ============================================================
 
 func (s *OnboardingStrategy) validateField(field, value string, session *domain.OnboardingSession) error {
@@ -429,6 +404,7 @@ func (s *OnboardingStrategy) validateField(field, value string, session *domain.
 
 func (s *OnboardingStrategy) finalizeAccount(
 	ctx context.Context,
+	agentResp *domain.ChatAgentResponse,
 	session *domain.OnboardingSession,
 	customerID string,
 ) (*domain.ChatResponse, error) {
@@ -437,15 +413,12 @@ func (s *OnboardingStrategy) finalizeAccount(
 
 	if s.authStore == nil {
 		s.logger.Error("onboarding: authStore not available for registration")
-		return &domain.ChatResponse{
-			Answer: "Todos os dados foram coletados com sucesso! ✅\n\n" +
-				"Porém o serviço de cadastro está temporariamente indisponível. " +
-				"Tente novamente em alguns instantes.",
-			Context:      "onboarding",
-			Intent:       "open_account",
-			Confidence:   1.0,
-			CurrentField: &completed,
-		}, nil
+		resp := s.buildResponse(agentResp)
+		resp.Answer = "Todos os dados foram coletados com sucesso! ✅\n\n" +
+			"Porém o serviço de cadastro está temporariamente indisponível. " +
+			"Tente novamente em alguns instantes."
+		resp.Step = &completed
+		return resp, nil
 	}
 
 	data := session.CollectedData
@@ -469,16 +442,16 @@ func (s *OnboardingStrategy) finalizeAccount(
 		return nil, fmt.Errorf("check existing customer: %w", err)
 	}
 	if existing != nil {
-		errorField := "error"
+		errorStep := "error"
 		s.deleteSession(customerID)
 		return &domain.ChatResponse{
 			Answer: "⚠️ Esse CNPJ já está cadastrado no sistema. " +
 				"Se você já tem conta, faça login. Se acredita que houve um erro, " +
 				"entre em contato com nosso atendimento.",
-			Context:      "onboarding",
-			Intent:       "open_account",
-			Confidence:   1.0,
-			CurrentField: &errorField,
+			Context:    "onboarding",
+			Intent:     "open_account",
+			Confidence: 1.0,
+			Step:       &errorStep,
 		}, nil
 	}
 
@@ -516,10 +489,10 @@ func (s *OnboardingStrategy) finalizeAccount(
 			registerResp.Agencia,
 			registerResp.Conta,
 		),
-		Context:      "onboarding",
-		Intent:       "open_account",
-		Confidence:   1.0,
-		CurrentField: &completed,
+		Context:    "onboarding",
+		Intent:     "open_account",
+		Confidence: 1.0,
+		Step:       &completed,
 		AccountData: &domain.AccountData{
 			CustomerID: registerResp.CustomerID,
 			Agencia:    registerResp.Agencia,
@@ -531,6 +504,19 @@ func (s *OnboardingStrategy) finalizeAccount(
 // ============================================================
 // Helpers
 // ============================================================
+
+func (s *OnboardingStrategy) buildResponse(resp *domain.ChatAgentResponse) *domain.ChatResponse {
+	return &domain.ChatResponse{
+		Answer:           resp.Answer,
+		Context:          resp.Context,
+		Intent:           resp.Intent,
+		Confidence:       resp.Confidence,
+		Step:             resp.Step,
+		FieldValue:       resp.FieldValue,
+		NextStep:         resp.NextStep,
+		SuggestedActions: resp.SuggestedActions,
+	}
+}
 
 func (s *OnboardingStrategy) getOrCreateSession(customerID string) *domain.OnboardingSession {
 	s.mu.RLock()
@@ -544,13 +530,13 @@ func (s *OnboardingStrategy) getOrCreateSession(customerID string) *domain.Onboa
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Double-check após lock exclusivo
 	if session, ok = s.sessions[customerID]; ok {
 		return session
 	}
 
 	session = &domain.OnboardingSession{
-		CollectedData: make(map[string]string),
+		CollectedData:   make(map[string]string),
+		EnrichedHistory: make([]domain.HistoryEntry, 0),
 	}
 	s.sessions[customerID] = session
 	return session
