@@ -14,8 +14,8 @@ import (
 // NewLogger creates a structured zap logger.
 // Always uses production base (no stacktraces on Warn).
 // debug level → colorized console; otherwise → compact JSON.
-// If betterStackToken is provided, logs are also sent to Better Stack.
-func NewLogger(level string, betterStackToken, betterStackURL string) *zap.Logger {
+// If axiomToken is provided, logs are also sent to Axiom.
+func NewLogger(level string, axiomToken, axiomDataset string) *zap.Logger {
 	cfg := zap.NewProductionConfig()
 	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
@@ -34,20 +34,20 @@ func NewLogger(level string, betterStackToken, betterStackURL string) *zap.Logge
 		panic("failed to create logger: " + err.Error())
 	}
 
-	// Se Better Stack configurado, adiciona core extra (tee)
-	if betterStackToken != "" && betterStackURL != "" {
-		bsCore := newBetterstackCore(betterstackConfig{
-			Token:    betterStackToken,
-			Endpoint: betterStackURL,
-			Level:    zapLevel,
+	// Se Axiom configurado, adiciona core extra (tee)
+	if axiomToken != "" && axiomDataset != "" {
+		axCore := newAxiomCore(axiomConfig{
+			Token:   axiomToken,
+			Dataset: axiomDataset,
+			Level:   zapLevel,
 		})
-		if bsCore != nil {
-			teeCore := zapcore.NewTee(logger.Core(), bsCore)
+		if axCore != nil {
+			teeCore := zapcore.NewTee(logger.Core(), axCore)
 			logger = zap.New(teeCore, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
-			logger.Info("better_stack logging enabled", zap.String("endpoint", betterStackURL))
+			logger.Info("axiom logging enabled", zap.String("dataset", axiomDataset))
 		}
 	} else {
-		logger.Warn("better_stack logging DISABLED — set BETTERSTACK_SOURCE_TOKEN and BETTERSTACK_INGEST_URL to enable")
+		logger.Warn("axiom logging DISABLED — set AXIOM_TOKEN and AXIOM_DATASET to enable")
 	}
 
 	return logger

@@ -22,7 +22,7 @@ package domain
 // Em v9, cada turno é enriquecido com step e validated para que
 // o agente saiba exatamente onde estamos no onboarding.
 type HistoryEntry struct {
-	Query string `json:"query"`
+	Query  string `json:"query"`
 	Answer string `json:"answer"`
 
 	// Step indica qual campo do onboarding este turno representa.
@@ -182,10 +182,10 @@ func (s *OnboardingSession) CollectedFieldNames() []string {
 // ChatContext encapsula tudo que uma Strategy precisa para processar
 // uma mensagem do chat.
 type ChatContext struct {
-	CustomerID     string
-	Query          string
-	DetectedIntent string
-	History        []HistoryEntry
+	CustomerID      string
+	Query           string
+	DetectedIntent  string
+	History         []HistoryEntry
 	ValidationError string
 }
 

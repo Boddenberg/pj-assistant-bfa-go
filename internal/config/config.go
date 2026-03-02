@@ -33,9 +33,9 @@ type Config struct {
 	// Observability
 	OTLPEndpoint string
 
-	// Better Stack (logs)
-	BetterStackToken string // BETTERSTACK_SOURCE_TOKEN
-	BetterStackURL   string // BETTERSTACK_INGEST_URL
+	// Axiom (logs)
+	AxiomToken   string // AXIOM_TOKEN
+	AxiomDataset string // AXIOM_DATASET
 
 	// Supabase
 	SupabaseURL        string
@@ -76,8 +76,8 @@ func Load() *Config {
 
 		OTLPEndpoint: getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4317"),
 
-		BetterStackToken: getEnv("BETTERSTACK_SOURCE_TOKEN", ""),
-		BetterStackURL:   getEnv("BETTERSTACK_INGEST_URL", ""),
+		AxiomToken:   getEnv("AXIOM_TOKEN", ""),
+		AxiomDataset: getEnv("AXIOM_DATASET", "pj-agent-logs"),
 
 		SupabaseURL:        getEnv("SUPABASE_URL", ""),
 		SupabaseAnonKey:    getEnv("SUPABASE_ANON_KEY", ""),
