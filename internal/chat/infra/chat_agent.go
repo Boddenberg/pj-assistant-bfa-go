@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/chat/domain"
@@ -94,7 +95,8 @@ func (c *ChatAgentClient) SendChat(ctx context.Context, req *domain.ChatAgentReq
 
 			// Verifica status — qualquer coisa diferente de 200 é erro
 			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("agent /v1/chat returned status %d", resp.StatusCode)
+				errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+				return fmt.Errorf("agent /v1/chat returned status %d: %s", resp.StatusCode, string(errBody))
 			}
 
 			// Decodifica a resposta do agent

@@ -44,7 +44,10 @@ func NewLogger(level string, betterStackToken, betterStackURL string) *zap.Logge
 		if bsCore != nil {
 			teeCore := zapcore.NewTee(logger.Core(), bsCore)
 			logger = zap.New(teeCore, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+			logger.Info("better_stack logging enabled", zap.String("endpoint", betterStackURL))
 		}
+	} else {
+		logger.Warn("better_stack logging DISABLED — set BETTERSTACK_SOURCE_TOKEN and BETTERSTACK_INGEST_URL to enable")
 	}
 
 	return logger
