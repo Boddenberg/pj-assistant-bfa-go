@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import json
 import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -166,14 +167,19 @@ async def invoke_agent(request: AgentRequest) -> AgentResponse:
 
 
 # ============================================================
-# POST /v1/chat — rota simples chamada pelo BFA (Go)
+# POST /v1/chat — rota chamada pelo BFA (Go)
 # ============================================================
-# Contrato:
-#   Request:  {"query": "...", "customer_id": "...", "history": [...]}
-#   Response: {"answer": "...", "context": "...", "intent": "...", ...}
+# Contrato v8.0.0:
+#   Request:  {"query": "...", "customer_id": "...", "history": [...], "validation_error": "..."}
+#   Response: {"answer": "...", "current_field": "cnpj"|null, "field_value": "..."|null, ...}
 #
-# Diferente do /v1/agent/invoke (que precisa de profile/transactions),
-# essa rota faz RAG + LLM direto, sem o graph completo.
+# Dois modos:
+#   1. context != "onboarding" → RAG + LLM genérico (perguntas gerais)
+#   2. context == "onboarding" → LLM com structured output (pede campo a campo)
+
+# ============================================================
+# System Prompts
+# ============================================================
 
 CHAT_SYSTEM_PROMPT = """Você é o assistente virtual BFA para clientes PJ do Itaú.
 
@@ -194,12 +200,77 @@ CHAT_SYSTEM_PROMPT = """Você é o assistente virtual BFA para clientes PJ do It
 Responda a pergunta do cliente de forma direta e útil."""
 
 
-# Mapeamento de palavras-chave para intents
+ONBOARDING_SYSTEM_PROMPT = """Você é o assistente virtual BFA que guia clientes na abertura de conta PJ do Itaú.
+
+## Sua função:
+Você conduz a conversa pedindo UM CAMPO POR VEZ na ordem fixa abaixo.
+Você NUNCA valida os dados — isso é responsabilidade do BFA (Go).
+Você apenas recebe o que o cliente digitou e devolve o valor cru.
+
+## Sequência de campos (SEMPRE nesta ordem):
+1. cnpj — CNPJ da empresa
+2. razaoSocial — Razão Social (nome oficial)
+3. nomeFantasia — Nome Fantasia (nome comercial)
+4. email — E-mail de contato
+5. representanteName — Nome completo do representante
+6. representanteCpf — CPF do representante
+7. representantePhone — Telefone do representante
+8. representanteBirthDate — Data de nascimento (DD/MM/AAAA)
+9. password — Senha de 6 dígitos numéricos
+10. passwordConfirmation — Confirmação da senha
+
+## Regras OBRIGATÓRIAS:
+- Peça APENAS UM campo por vez.
+- Quando o cliente responder, extraia o valor e avance para o próximo campo.
+- Se o cliente der informação demais (ex: vários campos de uma vez), extraia APENAS o campo atual.
+- NUNCA pule campos ou mude a ordem.
+- Seja amigável, use emojis ocasionalmente, e dê dicas sobre o formato esperado.
+- Para senha, diga que deve ser exatamente 6 dígitos numéricos.
+- Para confirmação de senha, peça para repetir a mesma senha.
+
+## Regra de validation_error:
+Se receber um validation_error, significa que o BFA rejeitou o último campo.
+Nesse caso, peça o MESMO CAMPO novamente, explicando o erro de forma amigável.
+NÃO avance para o próximo campo.
+
+## Formato de resposta (JSON OBRIGATÓRIO):
+Responda SEMPRE em JSON válido com esta estrutura:
+```json
+{{
+  "answer": "Sua mensagem amigável para o cliente",
+  "current_field": "nome_do_campo_atual",
+  "field_value": "valor_extraido_ou_null"
+}}
+```
+
+Valores especiais para current_field:
+- "welcome" — quando o cliente está iniciando (primeira mensagem). field_value deve ser null.
+- "completed" — quando todos os 10 campos foram coletados. field_value deve ser null.
+- Nome do campo (ex: "cnpj") — quando está pedindo ou recebendo esse campo.
+
+field_value:
+- null quando está PEDINDO o campo pela primeira vez
+- O valor que o cliente digitou quando está RECEBENDO a resposta do campo
+
+## Histórico da Conversa:
+{history_text}
+
+## Erro de validação (se houver):
+{validation_error}"""
+
+
+# ============================================================
+# Intent detection
+# ============================================================
+
 _INTENT_KEYWORDS: dict[str, tuple[str, str]] = {
     "abrir conta": ("open_account", "onboarding"),
     "abertura": ("open_account", "onboarding"),
     "conta pj": ("open_account", "onboarding"),
     "criar conta": ("open_account", "onboarding"),
+    "nova conta": ("open_account", "onboarding"),
+    "cadastro": ("open_account", "onboarding"),
+    "cadastrar": ("open_account", "onboarding"),
     "pix": ("pix_transfer", "pix"),
     "transferi": ("pix_transfer", "pix"),
     "boleto": ("billing", "billing"),
@@ -241,11 +312,159 @@ def _suggest_actions(intent: str) -> list[str]:
     return actions.get(intent, ["Falar com atendente", "Ver ajuda"])
 
 
+# ============================================================
+# Onboarding LLM call (structured JSON output)
+# ============================================================
+
+def _handle_onboarding_chat(
+    request: ChatRequest,
+    customer_id: str,
+) -> ChatResponse:
+    """
+    Processa mensagem de onboarding: pede campos um a um via LLM.
+    O LLM retorna JSON com current_field + field_value.
+    """
+    # Build history text
+    history_text = "Sem histórico anterior."
+    if request.history:
+        lines = []
+        for h in request.history[-5:]:
+            lines.append(f"Cliente: {h.query}")
+            lines.append(f"Assistente: {h.answer}")
+        history_text = "\n".join(lines)
+
+    # Build validation_error text
+    validation_error = "Nenhum erro."
+    if request.validation_error:
+        validation_error = f"ERRO DO BFA: {request.validation_error}\nPeça o MESMO campo novamente explicando o erro."
+
+    prompt = ONBOARDING_SYSTEM_PROMPT.format(
+        history_text=history_text,
+        validation_error=validation_error,
+    )
+
+    reasoning_steps = [
+        "Intent: open_account",
+        "Contexto: onboarding",
+        f"Validation error: {request.validation_error or 'nenhum'}",
+    ]
+
+    token_usage = TokenUsage()
+
+    try:
+        with track_latency("llm"):
+            llm = ChatOpenAI(
+                model=settings.openai_model,
+                api_key=settings.openai_api_key,
+                max_tokens=settings.max_tokens_per_request,
+                temperature=0.3,
+            )
+            response = llm.invoke(
+                [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": request.query},
+                ]
+            )
+
+        raw_answer = response.content
+
+        # Extract token usage
+        if hasattr(response, "response_metadata"):
+            usage = response.response_metadata.get("token_usage", {})
+            token_usage = TokenUsage(
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+                total_tokens=usage.get("total_tokens", 0),
+            )
+
+        # Parse JSON from LLM response
+        parsed = _parse_onboarding_json(raw_answer)
+        answer = parsed.get("answer", raw_answer)
+        current_field = parsed.get("current_field")
+        field_value = parsed.get("field_value")
+
+        reasoning_steps.append(f"current_field: {current_field}")
+        reasoning_steps.append(f"field_value: {field_value}")
+
+    except Exception as e:
+        logger.error("onboarding.llm_failed", error=str(e))
+        answer = (
+            "Desculpe, tive um problema ao processar sua mensagem. "
+            "Por favor, tente novamente."
+        )
+        current_field = None
+        field_value = None
+        reasoning_steps.append(f"Erro LLM: {e}")
+
+    # Metrics
+    record_tokens(token_usage.prompt_tokens, token_usage.completion_tokens)
+    estimated_cost = cost_controller.estimate_cost(
+        token_usage.prompt_tokens, token_usage.completion_tokens
+    )
+    record_cost(estimated_cost)
+    record_confidence(1.0)
+
+    # Redact PII from answer
+    answer = redact_pii(answer)
+
+    return ChatResponse(
+        customer_id=customer_id,
+        answer=answer,
+        context="onboarding",
+        intent="open_account",
+        confidence=1.0,
+        current_field=current_field,
+        field_value=field_value,
+        suggested_actions=[],
+        metadata=ChatMetadata(
+            reasoning=reasoning_steps,
+            sources=[],
+            tokens_used=token_usage.total_tokens,
+            estimated_cost_usd=estimated_cost,
+        ),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def _parse_onboarding_json(raw: str) -> dict:
+    """
+    Extrai JSON da resposta do LLM.
+    O LLM pode retornar o JSON puro, ou envolto em ```json ... ```.
+    """
+    text = raw.strip()
+
+    # Remove markdown code fences
+    if text.startswith("```"):
+        lines = text.split("\n")
+        # Remove first and last lines (``` markers)
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Tenta encontrar JSON dentro do texto
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end])
+            except json.JSONDecodeError:
+                pass
+
+    logger.warning("onboarding.json_parse_failed", raw_preview=text[:200])
+    return {"answer": raw, "current_field": None, "field_value": None}
+    return actions.get(intent, ["Falar com atendente", "Ver ajuda"])
+
+
 @app.post("/v1/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """
     Chat endpoint — chamado pelo BFA (Go) para processar mensagens do usuário.
-    Faz RAG search + LLM call direto (sem o graph pesado que precisa de profile).
+
+    Dois modos:
+    1. context == "onboarding" → fluxo conversacional com current_field/field_value
+    2. Qualquer outro context → RAG + LLM genérico
     """
     customer_id = request.customer_id or "anonymous"
     logger.info("chat.request_received", customer_id=customer_id, query=request.query[:100])
@@ -261,19 +480,23 @@ async def chat(request: ChatRequest) -> ChatResponse:
             record_error("injection")
             raise HTTPException(status_code=400, detail="Invalid input detected")
 
-        sanitized_query = sanitize_input(request.query)
+        request.query = sanitize_input(request.query)
 
-        # --- Detect intent ---
-        intent, context = _detect_intent(sanitized_query)
+        # --- Route: onboarding or general ---
+        if request.context == "onboarding":
+            return _handle_onboarding_chat(request, customer_id)
+
+        # --- General flow: detect intent + RAG + LLM ---
+        intent, context = _detect_intent(request.query)
         if request.context:
-            context = request.context  # BFA pode forçar o context
+            context = request.context
 
         # --- RAG search ---
         rag_context = "Nenhum documento relevante encontrado."
         sources: list[str] = []
         try:
             with track_latency("rag"):
-                results = search_knowledge_base(sanitized_query, top_k=3)
+                results = search_knowledge_base(request.query, top_k=3)
             if results:
                 rag_context = "\n\n---\n\n".join([doc.page_content for doc in results])
                 sources = [doc.metadata.get("source", "unknown") for doc in results]
@@ -285,7 +508,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         history_text = "Sem histórico anterior."
         if request.history:
             lines = []
-            for h in request.history[-5:]:  # últimas 5 trocas
+            for h in request.history[-5:]:
                 lines.append(f"Cliente: {h.query}")
                 lines.append(f"Assistente: {h.answer}")
             history_text = "\n".join(lines)
@@ -314,13 +537,12 @@ async def chat(request: ChatRequest) -> ChatResponse:
                 response = llm.invoke(
                     [
                         {"role": "system", "content": prompt},
-                        {"role": "user", "content": sanitized_query},
+                        {"role": "user", "content": request.query},
                     ]
                 )
 
             answer = response.content
 
-            # Extract token usage
             if hasattr(response, "response_metadata"):
                 usage = response.response_metadata.get("token_usage", {})
                 token_usage = TokenUsage(
@@ -354,10 +576,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
         confidence = min(confidence, 0.99)
         record_confidence(confidence)
 
-        # Redact PII
         answer = redact_pii(answer)
 
-        # Fallback
         if not answer.strip():
             FALLBACK_RATE.inc()
             answer = (
@@ -374,6 +594,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
             context=context,
             intent=intent,
             confidence=confidence,
+            current_field=None,
+            field_value=None,
             suggested_actions=suggested_actions,
             metadata=ChatMetadata(
                 reasoning=reasoning_steps,

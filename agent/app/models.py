@@ -98,7 +98,9 @@ class ChatRequest(BaseModel):
     customer_id: str = "anonymous"
     context: str = ""
     history: list[ChatHistoryEntry] = Field(default_factory=list)
-    journey_state: dict | None = None
+    validation_error: str = ""
+    profile: dict | None = None
+    transactions: list[dict] = Field(default_factory=list)
 
 
 class ChatMetadata(BaseModel):
@@ -115,9 +117,11 @@ class ChatResponse(BaseModel):
 
     customer_id: str = ""
     answer: str
-    context: str = ""
-    intent: str = ""
+    context: str | None = None
+    intent: str | None = None
     confidence: float = 0.0
+    current_field: str | None = None
+    field_value: str | None = None
     suggested_actions: list[str] = Field(default_factory=list)
     metadata: ChatMetadata = Field(default_factory=ChatMetadata)
     timestamp: str = ""

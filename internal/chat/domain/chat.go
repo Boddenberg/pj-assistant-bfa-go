@@ -34,6 +34,8 @@ type ChatResponse struct {
 	Context          string   `json:"context,omitempty"`
 	Intent           string   `json:"intent,omitempty"`
 	Confidence       float64  `json:"confidence,omitempty"`
+	CurrentField     *string  `json:"current_field"`
+	FieldValue       *string  `json:"field_value"`
 	SuggestedActions []string `json:"suggested_actions,omitempty"`
 }
 
@@ -63,9 +65,13 @@ type ChatAgentRequest struct {
 	// History é o histórico da conversa para manter contexto entre turnos.
 	History []HistoryEntry `json:"history,omitempty"`
 
-	// JourneyState é o estado atual da jornada (ex: abertura de conta).
-	// O agent usa isso para saber em que etapa o usuário está.
-	JourneyState *JourneyState `json:"journey_state,omitempty"`
+	// ValidationError é a mensagem de erro quando o BFA rejeitou o último campo.
+	// Se vazio, o agente avança normalmente.
+	ValidationError string `json:"validation_error,omitempty"`
+
+	// Profile e Transactions são opcionais — usados pelo /v1/agent/invoke.
+	Profile      any   `json:"profile,omitempty"`
+	Transactions []any `json:"transactions,omitempty"`
 }
 
 // ChatAgentResponse é a resposta que o Agent Python devolve.
@@ -92,6 +98,8 @@ type ChatAgentResponse struct {
 	Context          string         `json:"context,omitempty"`
 	Intent           string         `json:"intent,omitempty"`
 	Confidence       float64        `json:"confidence,omitempty"`
+	CurrentField     *string        `json:"current_field"`
+	FieldValue       *string        `json:"field_value"`
 	SuggestedActions []string       `json:"suggested_actions,omitempty"`
 	Metadata         *AgentMetadata `json:"metadata,omitempty"`
 	Timestamp        string         `json:"timestamp"`
@@ -106,36 +114,35 @@ type AgentMetadata struct {
 }
 
 // ============================================================
-// Jornada (Journey) — State Machine para fluxos multi-etapa
+// Onboarding Session — dados coletados campo a campo
 // ============================================================
 
-// JourneyState armazena o estado de uma jornada em andamento.
-// Usado pelo Strategy Pattern para saber em que etapa o usuário está
-// e quais dados já foram coletados.
-//
-// Para abertura de conta (onboarding), as etapas são:
-//
-//	Stage 1: Dados da empresa (CNPJ, razão social, nome fantasia, email)
-//	Stage 2: Dados do representante (nome, CPF, telefone, data nascimento)
-//	Stage 3: Senha (senha, confirmação, aceite de termos)
-type JourneyState struct {
-	// JourneyType identifica o tipo de jornada: "onboarding", "pix_transfer", etc.
-	JourneyType string `json:"journey_type"`
+// OnboardingFields é a lista ordenada de campos do onboarding.
+// O agente pede um por vez, sempre nesta ordem.
+var OnboardingFields = []string{
+	"cnpj",
+	"razaoSocial",
+	"nomeFantasia",
+	"email",
+	"representanteName",
+	"representanteCpf",
+	"representantePhone",
+	"representanteBirthDate",
+	"password",
+	"passwordConfirmation",
+}
 
-	// Stage é a etapa atual (1, 2, 3...)
-	Stage int `json:"stage"`
+// OnboardingSession armazena o estado do onboarding em andamento.
+// Mantida em memória (por customerID) pelo OnboardingStrategy.
+type OnboardingSession struct {
+	// Started indica se o onboarding já iniciou (welcome recebido)
+	Started bool
 
-	// Status indica o estado geral: "in_progress", "completed", "cancelled", "error"
-	Status string `json:"status"`
+	// CollectedData guarda os campos já validados e aceitos pelo BFA.
+	CollectedData map[string]string
 
-	// CollectedData armazena os dados já coletados em etapas anteriores.
-	// É um mapa livre porque cada jornada tem campos diferentes.
-	// Ex para onboarding stage 2: {"cnpj": "12345678000190", "razaoSocial": "Empresa X"}
-	CollectedData map[string]string `json:"collected_data,omitempty"`
-
-	// ValidationErrors lista erros de validação da etapa atual.
-	// O agent pode usar isso para pedir correção ao usuário.
-	ValidationErrors []string `json:"validation_errors,omitempty"`
+	// LastQuery guarda a última query do cliente (para reenviar ao agent com validation_error)
+	LastQuery string
 }
 
 // ============================================================
@@ -158,6 +165,7 @@ type ChatContext struct {
 	// History é o histórico da conversa vindo do frontend
 	History []HistoryEntry
 
-	// Journey é o estado da jornada em andamento (nil se não houver)
-	Journey *JourneyState
+	// ValidationError é preenchido quando o BFA rejeita um campo.
+	// O agente recebe isso e pede o campo novamente com a mensagem de erro.
+	ValidationError string
 }

@@ -138,7 +138,6 @@ func (s *ChatService) ProcessMessage(ctx context.Context, customerID string, req
 		Query:          req.Query,
 		DetectedIntent: intent,
 		History:        history,
-		Journey:        nil, // futuro: buscar journey state do banco/cache
 	}
 
 	// Passo 4: Procura uma strategy registrada que aceite o intent
@@ -186,6 +185,8 @@ func (s *ChatService) defaultHandle(ctx context.Context, chatCtx *domain.ChatCon
 		Context:          agentResp.Context,
 		Intent:           agentResp.Intent,
 		Confidence:       agentResp.Confidence,
+		CurrentField:     agentResp.CurrentField,
+		FieldValue:       agentResp.FieldValue,
 		SuggestedActions: agentResp.SuggestedActions,
 	}, nil
 }

@@ -18,7 +18,7 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/observability"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/resilience"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/infra/supabase"
-	"github.com/boddenberg/pj-assistant-bfa-go/internal/port"
+	mainport "github.com/boddenberg/pj-assistant-bfa-go/internal/port"
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/service"
 
 	"go.uber.org/zap"
@@ -71,8 +71,8 @@ func main() {
 	// --- Clients ---
 	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
 
-	var profileClient port.ProfileFetcher
-	var transactionsClient port.TransactionsFetcher
+	var profileClient mainport.ProfileFetcher
+	var transactionsClient mainport.TransactionsFetcher
 	var supabaseClient *supabase.Client
 
 	if cfg.UseSupabase && cfg.SupabaseURL != "" {
@@ -137,7 +137,15 @@ func main() {
 	// --- Chat Service (Strategy Pattern) ---
 	// Registra as strategies na ordem de prioridade.
 	// A primeira strategy que aceita o intent ganha.
-	onboardingStrategy := chatservice.NewOnboardingStrategy(chatAgentClient, logger)
+	//
+	// O OnboardingStrategy recebe o authStore (supabaseClient) para poder
+	// criar a conta ao final do fluxo conversacional. Se Supabase não
+	// estiver configurado, authStore é nil e o cadastro retorna erro amigável.
+	var authStore mainport.AuthStore
+	if supabaseClient != nil {
+		authStore = supabaseClient
+	}
+	onboardingStrategy := chatservice.NewOnboardingStrategy(chatAgentClient, authStore, logger)
 	chatStrategies := []chatservice.ChatStrategy{
 		onboardingStrategy, // intent "onboarding" → abertura de conta
 		// Futuro: pixStrategy, balanceStrategy, etc.
