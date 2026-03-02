@@ -66,13 +66,13 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 	// Caso 1: step == null → conversa normal, não é onboarding
 	if step == "" {
 		s.appendHistory(session, query, resp.Answer, nil, nil)
-		return s.buildResponse(resp), nil
+		return s.buildResponse(resp, nil), nil
 	}
 
 	// Caso 2: step == "welcome" → mensagem de boas-vindas (sem validação)
 	if step == "welcome" {
 		s.appendHistory(session, query, resp.Answer, nil, nil)
-		return s.buildResponse(resp), nil
+		return s.buildResponse(resp, nil), nil
 	}
 
 	// Caso 3: step == next_step → rejeição inline do agente (não avançou)
@@ -87,7 +87,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		}
 
 		if validator, ok := s.validators[step]; ok {
-			if err := validator.Validate(fieldValue, session); err == nil {
+			if err := validator.Validate(ctx, fieldValue, session); err == nil {
 				// BFA validou com sucesso — normaliza, salva e reenvia ao agente para avançar
 				normalized := normalizeFieldValue(step, fieldValue)
 				session.OnboardingData[step] = normalized
@@ -96,19 +96,25 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 					zap.String("raw", fieldValue),
 					zap.String("normalized", normalized),
 				)
+
+				// Salvar campo no banco
+				if saveErr := s.repo.SaveField(ctx, customerID, step, normalized); saveErr != nil {
+					s.logger.Error("failed to save field", zap.String("step", step), zap.Error(saveErr))
+				}
+
 				s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
 
 				retryResp, retryErr := s.callAgent(ctx, customerID, query, session.History, "")
 				if retryErr != nil {
 					return nil, fmt.Errorf("agent retry after BFA validation: %w", retryErr)
 				}
-				return s.buildResponse(retryResp), nil
+				return s.buildResponse(retryResp, nil), nil
 			}
 		}
 
 		// BFA também rejeitou (ou não tem validator) — mantém rejeição do agente
 		s.appendHistory(session, query, resp.Answer, &step, boolPtr(false))
-		return s.buildResponse(resp), nil
+		return s.buildResponse(resp, nil), nil
 	}
 
 	// Caso 4: campo de onboarding → validar field_value
@@ -122,11 +128,11 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		// Step desconhecido, salva sem validação
 		s.logger.Warn("no validator for step", zap.String("step", step))
 		s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
-		return s.buildResponse(resp), nil
+		return s.buildResponse(resp, nil), nil
 	}
 
 	// Validar
-	if err := validator.Validate(fieldValue, session); err != nil {
+	if err := validator.Validate(ctx, fieldValue, session); err != nil {
 		// Validação falhou → salva validated=false e reenvia com validation_error
 		s.logger.Info("validation failed",
 			zap.String("step", step),
@@ -141,7 +147,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 			return nil, fmt.Errorf("agent retry call failed: %w", retryErr)
 		}
 
-		return s.buildResponse(retryResp), nil
+		return s.buildResponse(retryResp, nil), nil
 	}
 
 	// Validação OK → normalizar e persistir na sessão
@@ -152,18 +158,30 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		zap.String("raw", fieldValue),
 		zap.String("normalized", normalized),
 	)
+
+	// Salvar campo no banco
+	if saveErr := s.repo.SaveField(ctx, customerID, step, normalized); saveErr != nil {
+		s.logger.Error("failed to save field", zap.String("step", step), zap.Error(saveErr))
+	}
+
 	s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
 
-	// Se next_step == "completed", finalizar cadastro
+	// Se next_step == "completed", finalizar cadastro e devolver account_data
 	if nextStep == "completed" {
-		if err := s.repo.FinalizeAccount(session.OnboardingData); err != nil {
+		accountData, err := s.repo.FinalizeAccount(ctx, customerID, session.OnboardingData)
+		if err != nil {
 			s.logger.Error("finalize account failed", zap.Error(err))
 			return nil, fmt.Errorf("finalize account: %w", err)
 		}
-		s.logger.Info("onboarding completed", zap.String("customer_id", customerID))
+		s.logger.Info("🎉 onboarding completed",
+			zap.String("customer_id", accountData.CustomerID),
+			zap.String("agencia", accountData.Agencia),
+			zap.String("conta", accountData.Conta),
+		)
+		return s.buildResponse(resp, accountData), nil
 	}
 
-	return s.buildResponse(resp), nil
+	return s.buildResponse(resp, nil), nil
 }
 
 // appendHistory adiciona uma entrada no history da sessão.
@@ -177,12 +195,13 @@ func (s *Service) appendHistory(session *Session, query, answer string, step *st
 }
 
 // buildResponse monta a FrontendResponse a partir da AgentResponse.
-func (s *Service) buildResponse(resp *AgentResponse) *FrontendResponse {
+func (s *Service) buildResponse(resp *AgentResponse, accountData *AccountData) *FrontendResponse {
 	return &FrontendResponse{
-		Answer:   resp.Answer,
-		Context:  resp.Context,
-		Step:     resp.Step,
-		NextStep: resp.NextStep,
+		Answer:      resp.Answer,
+		Context:     resp.Context,
+		Step:        resp.Step,
+		NextStep:    resp.NextStep,
+		AccountData: accountData,
 	}
 }
 

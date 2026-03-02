@@ -29,6 +29,8 @@ func newTestService(agentURL string) *Service {
 	return NewService(client, sessions, repo, logger)
 }
 
+var ctx = context.Background()
+
 // ============================================================
 // Test: CNPJ validation
 // ============================================================
@@ -36,8 +38,7 @@ func newTestService(agentURL string) *Service {
 func TestValidateCNPJ_Valid(t *testing.T) {
 	repo := NewInMemoryAccountRepository(zap.NewNop())
 	v := &cnpjValidator{repo: repo}
-
-	if err := v.Validate("12.345.678/0001-90", nil); err != nil {
+	if err := v.Validate(ctx, "12.345.678/0001-90", nil); err != nil {
 		t.Errorf("expected valid CNPJ, got error: %v", err)
 	}
 }
@@ -45,8 +46,7 @@ func TestValidateCNPJ_Valid(t *testing.T) {
 func TestValidateCNPJ_TooShort(t *testing.T) {
 	repo := NewInMemoryAccountRepository(zap.NewNop())
 	v := &cnpjValidator{repo: repo}
-
-	if err := v.Validate("123456", nil); err == nil {
+	if err := v.Validate(ctx, "123456", nil); err == nil {
 		t.Error("expected error for short CNPJ")
 	}
 }
@@ -55,8 +55,7 @@ func TestValidateCNPJ_AlreadyExists(t *testing.T) {
 	repo := NewInMemoryAccountRepository(zap.NewNop())
 	repo.cnpjs["12345678000190"] = true
 	v := &cnpjValidator{repo: repo}
-
-	if err := v.Validate("12345678000190", nil); err == nil {
+	if err := v.Validate(ctx, "12345678000190", nil); err == nil {
 		t.Error("expected error for duplicate CNPJ")
 	}
 }
@@ -68,8 +67,7 @@ func TestValidateCNPJ_AlreadyExists(t *testing.T) {
 func TestValidatePasswordConfirmation_Match(t *testing.T) {
 	v := &passwordConfirmationValidator{}
 	session := &Session{OnboardingData: map[string]string{"password": "123456"}}
-
-	if err := v.Validate("123456", session); err != nil {
+	if err := v.Validate(ctx, "123456", session); err != nil {
 		t.Errorf("expected match, got error: %v", err)
 	}
 }
@@ -77,8 +75,7 @@ func TestValidatePasswordConfirmation_Match(t *testing.T) {
 func TestValidatePasswordConfirmation_Mismatch(t *testing.T) {
 	v := &passwordConfirmationValidator{}
 	session := &Session{OnboardingData: map[string]string{"password": "123456"}}
-
-	if err := v.Validate("654321", session); err == nil {
+	if err := v.Validate(ctx, "654321", session); err == nil {
 		t.Error("expected error for mismatched password confirmation")
 	}
 }
@@ -86,8 +83,7 @@ func TestValidatePasswordConfirmation_Mismatch(t *testing.T) {
 func TestValidatePasswordConfirmation_NoPasswordInSession(t *testing.T) {
 	v := &passwordConfirmationValidator{}
 	session := &Session{OnboardingData: map[string]string{}}
-
-	if err := v.Validate("123456", session); err == nil {
+	if err := v.Validate(ctx, "123456", session); err == nil {
 		t.Error("expected error when password not in session")
 	}
 }
@@ -98,21 +94,21 @@ func TestValidatePasswordConfirmation_NoPasswordInSession(t *testing.T) {
 
 func TestValidateBirthDate_Valid(t *testing.T) {
 	v := &birthDateValidator{}
-	if err := v.Validate("15/06/1990", nil); err != nil {
+	if err := v.Validate(ctx, "15/06/1990", nil); err != nil {
 		t.Errorf("expected valid date, got error: %v", err)
 	}
 }
 
 func TestValidateBirthDate_TooYoung(t *testing.T) {
 	v := &birthDateValidator{}
-	if err := v.Validate("01/01/2020", nil); err == nil {
+	if err := v.Validate(ctx, "01/01/2020", nil); err == nil {
 		t.Error("expected error for under-18")
 	}
 }
 
 func TestValidateBirthDate_InvalidFormat(t *testing.T) {
 	v := &birthDateValidator{}
-	if err := v.Validate("1990-06-15", nil); err == nil {
+	if err := v.Validate(ctx, "1990-06-15", nil); err == nil {
 		t.Error("expected error for wrong format")
 	}
 }
@@ -123,21 +119,21 @@ func TestValidateBirthDate_InvalidFormat(t *testing.T) {
 
 func TestValidatePassword_Valid(t *testing.T) {
 	v := &passwordValidator{}
-	if err := v.Validate("123456", nil); err != nil {
+	if err := v.Validate(ctx, "123456", nil); err != nil {
 		t.Errorf("expected valid password, got error: %v", err)
 	}
 }
 
 func TestValidatePassword_NotDigits(t *testing.T) {
 	v := &passwordValidator{}
-	if err := v.Validate("abc123", nil); err == nil {
+	if err := v.Validate(ctx, "abc123", nil); err == nil {
 		t.Error("expected error for non-digit password")
 	}
 }
 
 func TestValidatePassword_WrongLength(t *testing.T) {
 	v := &passwordValidator{}
-	if err := v.Validate("12345", nil); err == nil {
+	if err := v.Validate(ctx, "12345", nil); err == nil {
 		t.Error("expected error for wrong length password")
 	}
 }
@@ -148,14 +144,14 @@ func TestValidatePassword_WrongLength(t *testing.T) {
 
 func TestValidateEmail_Valid(t *testing.T) {
 	v := &emailValidator{}
-	if err := v.Validate("joao@empresa.com", nil); err != nil {
+	if err := v.Validate(ctx, "joao@empresa.com", nil); err != nil {
 		t.Errorf("expected valid email, got error: %v", err)
 	}
 }
 
 func TestValidateEmail_NoAt(t *testing.T) {
 	v := &emailValidator{}
-	if err := v.Validate("joaoempresa.com", nil); err == nil {
+	if err := v.Validate(ctx, "joaoempresa.com", nil); err == nil {
 		t.Error("expected error for email without @")
 	}
 }
@@ -166,14 +162,14 @@ func TestValidateEmail_NoAt(t *testing.T) {
 
 func TestValidateCPF_Valid(t *testing.T) {
 	v := &cpfValidator{}
-	if err := v.Validate("123.456.789-01", nil); err != nil {
+	if err := v.Validate(ctx, "123.456.789-01", nil); err != nil {
 		t.Errorf("expected valid CPF, got error: %v", err)
 	}
 }
 
 func TestValidateCPF_TooShort(t *testing.T) {
 	v := &cpfValidator{}
-	if err := v.Validate("12345", nil); err == nil {
+	if err := v.Validate(ctx, "12345", nil); err == nil {
 		t.Error("expected error for short CPF")
 	}
 }
@@ -184,14 +180,14 @@ func TestValidateCPF_TooShort(t *testing.T) {
 
 func TestValidatePhone_Valid(t *testing.T) {
 	v := &phoneValidator{}
-	if err := v.Validate("(11) 99999-1234", nil); err != nil {
+	if err := v.Validate(ctx, "(11) 99999-1234", nil); err != nil {
 		t.Errorf("expected valid phone, got error: %v", err)
 	}
 }
 
 func TestValidatePhone_TooShort(t *testing.T) {
 	v := &phoneValidator{}
-	if err := v.Validate("12345", nil); err == nil {
+	if err := v.Validate(ctx, "12345", nil); err == nil {
 		t.Error("expected error for short phone")
 	}
 }

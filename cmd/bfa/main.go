@@ -163,7 +163,14 @@ func main() {
 	// --- Chat V2 (Go puro — onboarding orquestrado pelo BFA) ---
 	chatV2Client := chatv2.NewClient(cfg.ChatAgentURL, 30*time.Second, logger)
 	chatV2Sessions := chatv2.NewSessionStore()
-	chatV2Repo := chatv2.NewInMemoryAccountRepository(logger)
+	var chatV2Repo chatv2.AccountRepository
+	if supabaseClient != nil {
+		chatV2Repo = chatv2.NewSupabaseAccountRepository(supabaseClient, logger)
+		logger.Info("chatv2 using Supabase repository")
+	} else {
+		chatV2Repo = chatv2.NewInMemoryAccountRepository(logger)
+		logger.Warn("chatv2 using in-memory repository (Supabase not configured)")
+	}
 	chatV2Svc := chatv2.NewService(chatV2Client, chatV2Sessions, chatV2Repo, logger)
 	logger.Info("chatv2 service enabled", zap.String("agent_url", cfg.ChatAgentURL))
 

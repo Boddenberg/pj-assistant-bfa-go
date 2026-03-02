@@ -1,6 +1,7 @@
 package chatv2
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -10,7 +11,7 @@ import (
 
 // Validator valida o field_value de um step do onboarding.
 type Validator interface {
-	Validate(value string, session *Session) error
+	Validate(ctx context.Context, value string, session *Session) error
 }
 
 // ValidatorRegistry mapeia step → Validator.
@@ -42,12 +43,12 @@ type cnpjValidator struct {
 	repo AccountRepository
 }
 
-func (v *cnpjValidator) Validate(value string, _ *Session) error {
+func (v *cnpjValidator) Validate(ctx context.Context, value string, _ *Session) error {
 	digits := onlyDigits(value)
 	if len(digits) != 14 {
 		return fmt.Errorf("CNPJ deve conter exatamente 14 dígitos (recebido: %d)", len(digits))
 	}
-	if v.repo.CNPJExists(digits) {
+	if v.repo.CNPJExists(ctx, digits) {
 		return fmt.Errorf("CNPJ %s já está cadastrado no sistema", digits)
 	}
 	return nil
@@ -60,7 +61,7 @@ type minLenValidator struct {
 	min   int
 }
 
-func (v *minLenValidator) Validate(value string, _ *Session) error {
+func (v *minLenValidator) Validate(_ context.Context, value string, _ *Session) error {
 	trimmed := strings.TrimSpace(value)
 	if len(trimmed) < v.min {
 		return fmt.Errorf("%s deve ter no mínimo %d caracteres", v.field, v.min)
@@ -72,7 +73,7 @@ func (v *minLenValidator) Validate(value string, _ *Session) error {
 
 type emailValidator struct{}
 
-func (v *emailValidator) Validate(value string, _ *Session) error {
+func (v *emailValidator) Validate(_ context.Context, value string, _ *Session) error {
 	trimmed := strings.TrimSpace(value)
 	if !strings.Contains(trimmed, "@") || !strings.Contains(trimmed, ".com") {
 		return fmt.Errorf("e-mail inválido: deve conter @ e .com")
@@ -84,7 +85,7 @@ func (v *emailValidator) Validate(value string, _ *Session) error {
 
 type cpfValidator struct{}
 
-func (v *cpfValidator) Validate(value string, _ *Session) error {
+func (v *cpfValidator) Validate(_ context.Context, value string, _ *Session) error {
 	digits := onlyDigits(value)
 	if len(digits) != 11 {
 		return fmt.Errorf("CPF deve conter exatamente 11 dígitos (recebido: %d)", len(digits))
@@ -96,7 +97,7 @@ func (v *cpfValidator) Validate(value string, _ *Session) error {
 
 type phoneValidator struct{}
 
-func (v *phoneValidator) Validate(value string, _ *Session) error {
+func (v *phoneValidator) Validate(_ context.Context, value string, _ *Session) error {
 	digits := onlyDigits(value)
 	if len(digits) < 10 {
 		return fmt.Errorf("telefone deve ter no mínimo 10 dígitos (recebido: %d)", len(digits))
@@ -110,7 +111,7 @@ type birthDateValidator struct{}
 
 var dateRegex = regexp.MustCompile(`^\d{2}/\d{2}/\d{4}$`)
 
-func (v *birthDateValidator) Validate(value string, _ *Session) error {
+func (v *birthDateValidator) Validate(_ context.Context, value string, _ *Session) error {
 	trimmed := strings.TrimSpace(value)
 	if !dateRegex.MatchString(trimmed) {
 		return fmt.Errorf("data deve estar no formato DD/MM/AAAA")
@@ -132,7 +133,7 @@ func (v *birthDateValidator) Validate(value string, _ *Session) error {
 
 type passwordValidator struct{}
 
-func (v *passwordValidator) Validate(value string, _ *Session) error {
+func (v *passwordValidator) Validate(_ context.Context, value string, _ *Session) error {
 	trimmed := strings.TrimSpace(value)
 	if len(trimmed) != 6 {
 		return fmt.Errorf("senha deve ter exatamente 6 dígitos")
@@ -149,7 +150,7 @@ func (v *passwordValidator) Validate(value string, _ *Session) error {
 
 type passwordConfirmationValidator struct{}
 
-func (v *passwordConfirmationValidator) Validate(value string, session *Session) error {
+func (v *passwordConfirmationValidator) Validate(_ context.Context, value string, session *Session) error {
 	saved, ok := session.OnboardingData["password"]
 	if !ok {
 		return fmt.Errorf("senha original não encontrada na sessão")

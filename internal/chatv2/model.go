@@ -13,10 +13,11 @@ type FrontendRequest struct {
 // --- BFA → Frontend ---
 
 type FrontendResponse struct {
-	Answer   string  `json:"answer"`
-	Context  *string `json:"context,omitempty"`
-	Step     *string `json:"step,omitempty"`
-	NextStep *string `json:"next_step,omitempty"`
+	Answer      string       `json:"answer"`
+	Context     *string      `json:"context,omitempty"`
+	Step        *string      `json:"step,omitempty"`
+	NextStep    *string      `json:"next_step,omitempty"`
+	AccountData *AccountData `json:"account_data,omitempty"`
 }
 
 // --- BFA → Agent Python ---
