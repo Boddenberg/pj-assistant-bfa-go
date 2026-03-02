@@ -117,10 +117,10 @@ type ChatAgentResponse struct {
 
 // AgentMetadata contém informações internas do processamento do Agent.
 type AgentMetadata struct {
-	Reasoning  []string `json:"reasoning,omitempty"`
-	Sources    []string `json:"sources,omitempty"`
-	TokensUsed int      `json:"tokens_used,omitempty"`
-	EstCostUSD float64  `json:"estimated_cost_usd,omitempty"`
+	Reasoning  []map[string]interface{} `json:"reasoning,omitempty"`
+	Sources    []string                 `json:"sources,omitempty"`
+	TokensUsed int                      `json:"tokens_used,omitempty"`
+	EstCostUSD float64                  `json:"estimated_cost_usd,omitempty"`
 }
 
 // ============================================================
