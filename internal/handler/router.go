@@ -225,6 +225,7 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 	// --- API v2 ---
 	r.Route("/v2", func(r chi.Router) {
 		r.Post("/chat", chatv2.Handler(chatV2Svc, logger))
+		r.Post("/chat/{customerID}", chatv2.Handler(chatV2Svc, logger))
 	})
 
 	return r

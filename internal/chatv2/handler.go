@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
-// Handler retorna um http.HandlerFunc para POST /v2/chat.
-// Frontend envia { "customer_id": "...", "query": "..." }
-// BFA orquestra validação e diálogo com o Agent Python.
+// Handler retorna um http.HandlerFunc para POST /v2/chat e POST /v2/chat/{customerID}.
 func Handler(svc *Service, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req FrontendRequest
@@ -28,12 +27,18 @@ func Handler(svc *Service, logger *zap.Logger) http.HandlerFunc {
 			return
 		}
 
+		// customerID vem do path; se não vier, fica "anonymous"
+		customerID := chi.URLParam(r, "customerID")
+		if customerID == "" {
+			customerID = "anonymous"
+		}
+
 		logger.Info("⬇️  request recebida do frontend",
-			zap.String("customer_id", req.CustomerID),
+			zap.String("customer_id", customerID),
 			zap.String("query", req.Query),
 		)
 
-		resp, err := svc.ProcessTurn(r.Context(), req.CustomerID, req.Query)
+		resp, err := svc.ProcessTurn(r.Context(), customerID, req.Query)
 		if err != nil {
 			logger.Error("chatv2: process turn failed", zap.Error(err))
 			writeJSON(w, http.StatusBadGateway, map[string]string{

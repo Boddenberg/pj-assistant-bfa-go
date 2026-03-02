@@ -7,8 +7,7 @@ package chatv2
 // --- Frontend → BFA ---
 
 type FrontendRequest struct {
-	CustomerID string `json:"customer_id"`
-	Query      string `json:"query"`
+	Query string `json:"query"`
 }
 
 // --- BFA → Frontend ---
