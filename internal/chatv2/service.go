@@ -11,10 +11,11 @@ import (
 // Service orquestra o turno de chat:
 // frontend → BFA (valida) → Agent Python (dialoga) → frontend.
 //
-// REGRA DE OURO: O BFA controla deterministicamente o step esperado.
-// O agente Python é apenas um formatador de mensagens.
-// O BFA NUNCA confia no step/next_step do agente para decidir
-// em qual campo está — usa session.ExpectedStep.
+// REGRA DE OURO:
+// - O AGENTE decide a ordem dos campos, qual step pedir, e o que dizer ao cliente.
+// - O BFA APENAS valida o field_value de acordo com o step que o agente informa,
+//   salva no banco, e faz pass-through da resposta do agente para o frontend.
+// - O BFA NÃO sabe a jornada, NÃO controla a sequência, NÃO sobrescreve step/next_step.
 type Service struct {
 	client     *Client
 	sessions   *SessionStore
@@ -47,28 +48,20 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string) (*F
 			for k, v := range savedData {
 				session.OnboardingData[k] = v
 			}
-			// Recalcular ExpectedStep com base nos dados já salvos
-			for _, step := range OnboardingSequence {
-				if _, ok := session.OnboardingData[step]; !ok {
-					session.ExpectedStep = step
-					break
-				}
-			}
 			s.logger.Info("♻️  sessão retomada do banco",
 				zap.String("customer_id", customerID),
 				zap.Int("fields_loaded", len(savedData)),
-				zap.String("expected_step", session.ExpectedStep),
 			)
 		}
 	}
 
-	// 1. Chamar agente com history atual
+	// 1. Chamar agente — ele decide o que fazer
 	agentResp, err := s.callAgent(ctx, customerID, query, session, "")
 	if err != nil {
 		return nil, fmt.Errorf("agent call failed: %w", err)
 	}
 
-	// 2. Processar resposta do agente com lógica determinística do BFA
+	// 2. Processar resposta do agente — BFA apenas valida o campo
 	return s.processAgentResponse(ctx, customerID, query, session, agentResp)
 }
 
@@ -85,177 +78,207 @@ func (s *Service) callAgent(ctx context.Context, customerID, query string, sessi
 	return s.client.Send(ctx, req)
 }
 
-// processAgentResponse aplica as regras DETERMINÍSTICAS do BFA.
-//
-// Fluxo:
-// 1. Se não é onboarding (step vazio) → pass-through.
-// 2. Se é welcome → setar ExpectedStep = primeiro campo, pass-through.
-// 3. Se é onboarding → BFA usa ExpectedStep para validar query.
-//    - Válido → salva, avança ExpectedStep, pede ao agente a próxima mensagem.
-//    - Inválido → incrementa retries, pede ao agente mensagem de erro.
+// processAgentResponse:
+// - O AGENTE informa step, next_step, answer, field_value.
+// - O BFA usa o step do agente para saber QUAL validator rodar.
+// - Se step == next_step → rejeição inline do agente (BFA tenta validar por conta).
+// - Se step != next_step → agente aceitou, BFA valida e salva.
+// - Se step vazio / welcome → pass-through.
+// - O BFA NUNCA sobrescreve step/next_step — o agente controla a jornada.
 func (s *Service) processAgentResponse(ctx context.Context, customerID, query string, session *Session, resp *AgentResponse) (*FrontendResponse, error) {
-	agentStep := derefStr(resp.Step)
+	step := derefStr(resp.Step)
+	nextStep := derefStr(resp.NextStep)
 
 	// Caso 1: step vazio → conversa normal, não é onboarding
-	if agentStep == "" {
+	if step == "" {
 		s.appendHistory(session, query, resp.Answer, nil, nil)
 		return s.buildResponse(resp, nil), nil
 	}
 
-	// Caso 2: welcome → inicializar sequência de onboarding
-	if agentStep == "welcome" {
-		session.ExpectedStep = OnboardingSequence[0] // cnpj
-		session.Retries = 0
+	// Caso 2: welcome → boas-vindas do agente, pass-through
+	if step == "welcome" {
 		s.appendHistory(session, query, resp.Answer, nil, nil)
-
 		s.logger.Info("🏁 onboarding iniciado",
 			zap.String("customer_id", customerID),
-			zap.String("expected_step", session.ExpectedStep),
+			zap.String("next_step", nextStep),
 		)
 		return s.buildResponse(resp, nil), nil
 	}
 
-	// Caso 3: onboarding em andamento → BFA valida usando ExpectedStep
-	expected := session.ExpectedStep
-	if expected == "" || expected == "completed" {
-		// Sessão já completou ou não iniciou — pass-through
-		s.appendHistory(session, query, resp.Answer, nil, nil)
-		return s.buildResponse(resp, nil), nil
+	// Controle de retries: se mudou de step, resetar contador
+	if step != session.LastStep {
+		session.Retries = 0
+		session.LastStep = step
 	}
 
 	s.logger.Info("🔍 BFA validando campo",
-		zap.String("expected_step", expected),
-		zap.String("agent_step", agentStep),
+		zap.String("agent_step", step),
+		zap.String("agent_next_step", nextStep),
 		zap.String("query", query),
 	)
 
-	// Sempre validar a QUERY do usuário (não o field_value do agente)
-	// O field_value do agente pode estar contaminado com valores de turnos anteriores
-	fieldValue := query
+	// Caso 3: step == next_step → rejeição inline do agente
+	// O agente já rejeitou, mas o BFA tenta validar por conta própria.
+	// Se o BFA também rejeitar → reenvia ao agente com validation_error.
+	// Se o BFA aceitar → salva e reenvia ao agente para que ele avance.
+	if step == nextStep {
+		s.logger.Info("agent inline rejection — BFA will attempt own validation", zap.String("step", step))
 
-	validator, hasValidator := s.validators[expected]
-	if !hasValidator {
-		s.logger.Warn("no validator for expected step — skipping", zap.String("step", expected))
-		session.OnboardingData[expected] = strings.TrimSpace(fieldValue)
-		s.appendHistory(session, query, resp.Answer, &expected, boolPtr(true))
-		session.AdvanceStep()
+		// BFA valida a query do usuário
+		if validator, ok := s.validators[step]; ok {
+			validationErr := validator.Validate(ctx, query, session)
+			if validationErr == nil {
+				// BFA aceitou — salvar, e reenviar ao agente para que avance
+				normalized := normalizeFieldValue(step, query)
+				session.OnboardingData[step] = normalized
+				session.Retries = 0
+
+				s.logger.Info("✅ BFA overrode agent rejection — field is valid",
+					zap.String("step", step),
+					zap.String("raw", query),
+					zap.String("normalized", normalized),
+				)
+
+				if saveErr := s.repo.SaveField(ctx, customerID, step, normalized); saveErr != nil {
+					s.logger.Error("failed to save field", zap.String("step", step), zap.Error(saveErr))
+				}
+
+				s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
+
+				// Reenviar ao agente — agora com o campo salvo em collected_data
+				retryResp, retryErr := s.callAgent(ctx, customerID, query, session, "")
+				if retryErr != nil {
+					return nil, fmt.Errorf("agent retry after BFA override: %w", retryErr)
+				}
+				// Pass-through da resposta do agente — ele decide step/next_step
+				return s.buildResponse(retryResp, nil), nil
+			}
+
+			// BFA também rejeitou — enviar validation_error ao agente
+			session.Retries++
+			s.logger.Info("❌ BFA also rejected — sending validation_error to agent",
+				zap.String("step", step),
+				zap.String("field_value", query),
+				zap.Int("retries", session.Retries),
+				zap.Error(validationErr),
+			)
+
+			s.appendHistory(session, query, resp.Answer, &step, boolPtr(false))
+
+			errorResp, retryErr := s.callAgent(ctx, customerID, query, session, validationErr.Error())
+			if retryErr != nil {
+				return nil, fmt.Errorf("agent error-format call failed: %w", retryErr)
+			}
+			// Pass-through — agente formata a mensagem de erro
+			return s.buildResponse(errorResp, nil), nil
+		}
+
+		// Sem validator para o step — manter rejeição do agente
+		s.appendHistory(session, query, resp.Answer, &step, boolPtr(false))
 		return s.buildResponse(resp, nil), nil
 	}
 
-	// Validar
-	validationErr := validator.Validate(ctx, fieldValue, session)
+	// Caso 4: step != next_step → agente aceitou e avançou
+	// BFA valida o campo usando o step do agente, salva, e faz pass-through.
+	validator, hasValidator := s.validators[step]
 
-	if validationErr != nil {
-		// ❌ Validação falhou
-		session.Retries++
-		remaining := MaxRetries - session.Retries
-		if remaining < 0 {
-			remaining = 0
+	if !hasValidator {
+		// Step desconhecido — salva sem validação, pass-through
+		s.logger.Warn("no validator for step — accepting", zap.String("step", step))
+		session.OnboardingData[step] = strings.TrimSpace(query)
+		s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
+
+		if saveErr := s.repo.SaveField(ctx, customerID, step, strings.TrimSpace(query)); saveErr != nil {
+			s.logger.Error("failed to save field", zap.String("step", step), zap.Error(saveErr))
 		}
 
-		s.logger.Info("❌ BFA rejeitou campo",
-			zap.String("step", expected),
-			zap.String("field_value", fieldValue),
+		return s.checkCompletion(ctx, customerID, query, session, resp)
+	}
+
+	// Validar a query do usuário usando o step que o AGENTE informou
+	if err := validator.Validate(ctx, query, session); err != nil {
+		// BFA rejeitou apesar do agente ter aceitado
+		session.Retries++
+		s.logger.Info("❌ BFA rejected field (agent had accepted)",
+			zap.String("step", step),
+			zap.String("field_value", query),
 			zap.Int("retries", session.Retries),
-			zap.Int("remaining", remaining),
-			zap.Error(validationErr),
+			zap.Error(err),
 		)
 
-		s.appendHistory(session, query, resp.Answer, &expected, boolPtr(false))
+		s.appendHistory(session, query, resp.Answer, &step, boolPtr(false))
 
-		// Chamar agente com validation_error para que formate a mensagem de erro
-		errorResp, retryErr := s.callAgent(ctx, customerID, query, session, validationErr.Error())
+		// Reenviar ao agente com validation_error para que reformate
+		errorResp, retryErr := s.callAgent(ctx, customerID, query, session, err.Error())
 		if retryErr != nil {
-			return nil, fmt.Errorf("agent error-format call failed: %w", retryErr)
+			return nil, fmt.Errorf("agent retry call failed: %w", retryErr)
 		}
-
-		// Corrigir step/next_step na resposta para refletir o step real do BFA
-		errorResp.Step = &expected
-		errorResp.NextStep = &expected
-
+		// Pass-through
 		return s.buildResponse(errorResp, nil), nil
 	}
 
-	// ✅ Validação OK → normalizar, salvar, avançar
-	normalized := normalizeFieldValue(expected, fieldValue)
-	session.OnboardingData[expected] = normalized
+	// ✅ Validação OK — normalizar, salvar
+	normalized := normalizeFieldValue(step, query)
+	session.OnboardingData[step] = normalized
+	session.Retries = 0
 
 	s.logger.Info("✅ BFA validou campo",
-		zap.String("step", expected),
-		zap.String("raw", fieldValue),
+		zap.String("step", step),
+		zap.String("raw", query),
 		zap.String("normalized", normalized),
 	)
 
-	// Salvar no banco
-	if saveErr := s.repo.SaveField(ctx, customerID, expected, normalized); saveErr != nil {
-		s.logger.Error("failed to save field", zap.String("step", expected), zap.Error(saveErr))
+	if saveErr := s.repo.SaveField(ctx, customerID, step, normalized); saveErr != nil {
+		s.logger.Error("failed to save field", zap.String("step", step), zap.Error(saveErr))
 	}
 
-	s.appendHistory(session, query, resp.Answer, &expected, boolPtr(true))
+	s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
 
-	// Avançar para próximo step
-	previousStep := expected
-	session.AdvanceStep()
-	nextExpected := session.ExpectedStep
+	// Verificar se o agente disse que completou
+	return s.checkCompletion(ctx, customerID, query, session, resp)
+}
 
-	s.logger.Info("➡️  avançando step",
-		zap.String("completed_step", previousStep),
-		zap.String("next_expected_step", nextExpected),
-	)
+// checkCompletion verifica se o agente retornou next_step=completed.
+// Se sim e todos os campos estão preenchidos, finaliza a conta.
+// Caso contrário, faz pass-through da resposta do agente.
+func (s *Service) checkCompletion(ctx context.Context, customerID, query string, session *Session, resp *AgentResponse) (*FrontendResponse, error) {
+	nextStep := derefStr(resp.NextStep)
 
-	// Se completed → finalizar conta
-	if nextExpected == "completed" {
-		missing := session.MissingFields()
-		if len(missing) > 0 {
-			s.logger.Warn("⚠️ campos faltando apesar de completed",
-				zap.Strings("missing_fields", missing),
-			)
-			// Voltar para o primeiro campo faltante
-			session.ExpectedStep = missing[0]
-			session.Retries = 0
-			validationMsg := fmt.Sprintf("Campos obrigatórios faltando: %s",
-				strings.Join(missing, ", "))
-
-			retryResp, retryErr := s.callAgent(ctx, customerID, query, session, validationMsg)
-			if retryErr != nil {
-				return nil, fmt.Errorf("agent retry missing fields: %w", retryErr)
-			}
-			return s.buildResponse(retryResp, nil), nil
-		}
-
-		accountData, err := s.repo.FinalizeAccount(ctx, customerID, session.OnboardingData)
-		if err != nil {
-			s.logger.Error("finalize account failed", zap.Error(err))
-			return nil, fmt.Errorf("finalize account: %w", err)
-		}
-		s.logger.Info("🎉 onboarding completed",
-			zap.String("customer_id", accountData.CustomerID),
-			zap.String("agencia", accountData.Agencia),
-			zap.String("conta", accountData.Conta),
-		)
-
-		// Chamar agente para gerar mensagem de parabéns com os dados
-		completedResp, completedErr := s.callAgent(ctx, customerID, query, session, "")
-		if completedErr != nil {
-			// Fallback: usar a resposta original do agente
-			return s.buildResponse(resp, accountData), nil
-		}
-		return s.buildResponse(completedResp, accountData), nil
-	}
-
-	// Chamar agente para gerar mensagem de "campo aceito + próximo passo"
-	// O agente recebe collected_data atualizado e sabe qual é o próximo
-	advanceResp, advanceErr := s.callAgent(ctx, customerID, query, session, "")
-	if advanceErr != nil {
-		// Fallback: usar resposta original do agente
+	if nextStep != "completed" {
+		// Agente não completou — pass-through
 		return s.buildResponse(resp, nil), nil
 	}
 
-	// Corrigir step/next_step para refletir o estado real do BFA
-	advanceResp.Step = &previousStep
-	advanceResp.NextStep = &nextExpected
+	// Agente disse completed — verificar se todos os campos obrigatórios estão preenchidos
+	missing := session.MissingFields()
+	if len(missing) > 0 {
+		s.logger.Warn("⚠️ agente disse completed mas faltam campos",
+			zap.Strings("missing_fields", missing),
+		)
+		validationMsg := fmt.Sprintf("Não é possível finalizar. Campos faltando: %s",
+			strings.Join(missing, ", "))
 
-	return s.buildResponse(advanceResp, nil), nil
+		retryResp, retryErr := s.callAgent(ctx, customerID, query, session, validationMsg)
+		if retryErr != nil {
+			return nil, fmt.Errorf("agent retry missing fields: %w", retryErr)
+		}
+		return s.buildResponse(retryResp, nil), nil
+	}
+
+	// Todos os campos preenchidos — finalizar conta
+	accountData, err := s.repo.FinalizeAccount(ctx, customerID, session.OnboardingData)
+	if err != nil {
+		s.logger.Error("finalize account failed", zap.Error(err))
+		return nil, fmt.Errorf("finalize account: %w", err)
+	}
+	s.logger.Info("🎉 onboarding completed",
+		zap.String("customer_id", accountData.CustomerID),
+		zap.String("agencia", accountData.Agencia),
+		zap.String("conta", accountData.Conta),
+	)
+
+	// Pass-through da resposta do agente + dados da conta
+	return s.buildResponse(resp, accountData), nil
 }
 
 // appendHistory adiciona uma entrada no history da sessão.
@@ -269,6 +292,7 @@ func (s *Service) appendHistory(session *Session, query, answer string, step *st
 }
 
 // buildResponse monta a FrontendResponse a partir da AgentResponse.
+// NUNCA sobrescreve step/next_step — o agente controla a jornada.
 func (s *Service) buildResponse(resp *AgentResponse, accountData *AccountData) *FrontendResponse {
 	return &FrontendResponse{
 		Answer:      resp.Answer,

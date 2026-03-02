@@ -69,15 +69,16 @@ type Session struct {
 	CustomerID     string
 	History        []ChatMessage
 	OnboardingData map[string]string
-	ExpectedStep   string // BFA controla deterministicamente qual campo espera a seguir
+	LastStep       string // último step em que estávamos (para controle de retries)
 	Retries        int    // quantas tentativas inválidas consecutivas no step atual
 }
 
 const MaxRetries = 3
 
-// OnboardingSequence define a ordem DETERMINÍSTICA dos campos.
-// O BFA controla a sequência, NÃO o agente.
-var OnboardingSequence = []string{
+// RequiredOnboardingFields são os campos obrigatórios para abrir uma conta PJ.
+// Usados apenas para verificar se todos foram preenchidos antes de finalizar.
+// A ORDEM é decidida pelo agente, NÃO pelo BFA.
+var RequiredOnboardingFields = []string{
 	"cnpj",
 	"razaoSocial",
 	"nomeFantasia",
@@ -88,29 +89,6 @@ var OnboardingSequence = []string{
 	"representanteBirthDate",
 	"password",
 	"passwordConfirmation",
-}
-
-// RequiredOnboardingFields são os campos obrigatórios para abrir uma conta PJ.
-var RequiredOnboardingFields = OnboardingSequence
-
-// NextStepAfter retorna o próximo step na sequência após o step dado.
-// Se for o último, retorna "completed".
-func NextStepAfter(current string) string {
-	for i, s := range OnboardingSequence {
-		if s == current {
-			if i+1 < len(OnboardingSequence) {
-				return OnboardingSequence[i+1]
-			}
-			return "completed"
-		}
-	}
-	return ""
-}
-
-// AdvanceStep avança para o próximo step e reseta o contador de retries.
-func (s *Session) AdvanceStep() {
-	s.ExpectedStep = NextStepAfter(s.ExpectedStep)
-	s.Retries = 0
 }
 
 // MissingFields retorna os campos obrigatórios que ainda não foram validados na sessão.
