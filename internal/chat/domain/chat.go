@@ -30,13 +30,23 @@ type ChatRequest struct {
 
 // ChatResponse é o que o BFA devolve pro chamador.
 type ChatResponse struct {
-	Answer           string   `json:"answer"`
-	Context          string   `json:"context,omitempty"`
-	Intent           string   `json:"intent,omitempty"`
-	Confidence       float64  `json:"confidence,omitempty"`
-	CurrentField     *string  `json:"current_field"`
-	FieldValue       *string  `json:"field_value"`
-	SuggestedActions []string `json:"suggested_actions,omitempty"`
+	Answer           string       `json:"answer"`
+	Context          string       `json:"context,omitempty"`
+	Intent           string       `json:"intent,omitempty"`
+	Confidence       float64      `json:"confidence,omitempty"`
+	CurrentField     *string      `json:"current_field"`
+	FieldValue       *string      `json:"field_value"`
+	SuggestedActions []string     `json:"suggested_actions,omitempty"`
+	AccountData      *AccountData `json:"account_data,omitempty"`
+}
+
+// AccountData contém os dados da conta criada no onboarding.
+// Só é preenchido quando current_field == "completed".
+// Corresponde ao mesmo contrato do POST /v1/auth/register (RegisterResponse).
+type AccountData struct {
+	CustomerID string `json:"customerId"`
+	Agencia    string `json:"agencia"`
+	Conta      string `json:"conta"`
 }
 
 // ============================================================

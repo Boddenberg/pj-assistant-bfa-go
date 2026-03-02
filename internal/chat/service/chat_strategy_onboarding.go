@@ -244,6 +244,17 @@ func (s *OnboardingStrategy) handleFieldValidation(
 		zap.Int("total_fields", len(session.CollectedData)),
 	)
 
+	// Último campo aceito? → criar conta automaticamente
+	// Quando o passwordConfirmation é validado, todos os 10 campos estão na sessão.
+	// Não precisamos esperar o agente devolver "completed" — criamos a conta direto.
+	if field == "passwordConfirmation" {
+		s.logger.Info("onboarding: last field accepted, auto-finalizing account",
+			zap.String("customer_id", chatCtx.CustomerID),
+			zap.Int("total_fields", len(session.CollectedData)),
+		)
+		return s.finalizeAccount(ctx, resp, session, chatCtx.CustomerID)
+	}
+
 	return s.buildResponse(resp), nil
 }
 
@@ -361,7 +372,10 @@ func (s *OnboardingStrategy) finalizeAccount(
 		return nil, fmt.Errorf("check existing customer: %w", err)
 	}
 	if existing != nil {
+		errorField := "error"
 		resp := s.buildResponse(agentResp)
+		resp.CurrentField = &errorField
+		resp.FieldValue = nil
 		resp.Answer = "⚠️ Esse CNPJ já está cadastrado no sistema. " +
 			"Se você já tem conta, faça login. Se acredita que houve um erro, " +
 			"entre em contato com nosso atendimento."
@@ -395,18 +409,27 @@ func (s *OnboardingStrategy) finalizeAccount(
 	s.deleteSession(customerID)
 
 	// Monta resposta de sucesso com dados da conta
+	completed := "completed"
 	resp := s.buildResponse(agentResp)
+	resp.CurrentField = &completed
+	resp.FieldValue = nil
+	resp.Context = "onboarding"
+	resp.Intent = "open_account"
+	resp.Confidence = 1.0
+	resp.AccountData = &domain.AccountData{
+		CustomerID: registerResp.CustomerID,
+		Agencia:    registerResp.Agencia,
+		Conta:      registerResp.Conta,
+	}
 	resp.Answer = fmt.Sprintf(
 		"🎉 Conta criada com sucesso!\n\n"+
 			"📋 Dados da sua conta:\n"+
 			"• Agência: %s\n"+
-			"• Conta: %s\n"+
-			"• ID do cliente: %s\n\n"+
+			"• Conta: %s\n\n"+
 			"Você já pode fazer login usando o CPF do representante e a senha de 6 dígitos que cadastrou.\n\n"+
 			"Seja bem-vindo ao Itaú PJ! 🏦",
 		registerResp.Agencia,
 		registerResp.Conta,
-		registerResp.CustomerID,
 	)
 
 	return resp, nil
