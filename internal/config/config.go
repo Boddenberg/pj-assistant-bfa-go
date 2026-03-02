@@ -64,7 +64,7 @@ func Load() *Config {
 		ProfileAPIURL:      getEnv("PROFILE_API_URL", "http://localhost:8081"),
 		TransactionsAPIURL: getEnv("TRANSACTIONS_API_URL", "http://localhost:8082"),
 		AgentAPIURL:        getEnv("AGENT_API_URL", "http://localhost:8090"),
-		ChatAgentURL:       getEnv("CHAT_AGENT_URL", "https://pj-assistant-agent-py-production.up.railway.app"),
+		ChatAgentURL:       getEnv("CHAT_AGENT_URL", getEnv("AGENT_API_URL", "http://localhost:8090")),
 
 		HTTPTimeout: getEnvDuration("HTTP_TIMEOUT", 10*time.Second),
 
