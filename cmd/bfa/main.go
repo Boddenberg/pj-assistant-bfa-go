@@ -99,8 +99,13 @@ func main() {
 	agentClient := client.NewAgentClient(httpClient, cfg.AgentAPIURL, cb, resilienceCfg)
 
 	// Chat Agent Client — chama o Agent Python via POST /v1/chat
-	// Esse é o client novo para a rota GET /v1/assistant/{customerId}
-	chatAgentClient := chatinfra.NewChatAgentClient(httpClient, cfg.ChatAgentURL, cb, resilienceCfg)
+	// Esse é o client novo para a rota POST /v1/chat/{customerId}
+	// Usa HTTP client com timeout maior (30s) porque o agent Python pode demorar
+	// (RAG search + LLM call) e circuit breaker isolado para não ser afetado
+	// por falhas em outros serviços (Supabase, profile API, etc).
+	chatHTTPClient := &http.Client{Timeout: 30 * time.Second}
+	chatCB := resilience.NewCircuitBreaker("chat-agent")
+	chatAgentClient := chatinfra.NewChatAgentClient(chatHTTPClient, cfg.ChatAgentURL, chatCB, resilienceCfg)
 
 	// --- Services ---
 	assistantSvc := service.NewAssistant(
