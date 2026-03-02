@@ -219,10 +219,16 @@ Você apenas recebe o que o cliente digitou e devolve o valor cru.
 9. password — Senha de 6 dígitos numéricos
 10. passwordConfirmation — Confirmação da senha
 
-## Regras OBRIGATÓRIAS:
-- Peça APENAS UM campo por vez.
-- Quando o cliente responder, extraia o valor e avance para o próximo campo.
-- Se o cliente der informação demais (ex: vários campos de uma vez), extraia APENAS o campo atual.
+## ESTADO ATUAL (DETERMINADO PELO BFA — SIGA EXATAMENTE):
+- Campo atual que você DEVE tratar: **{expected_field}**
+- Campos já coletados com sucesso: {collected_fields}
+
+## Regras CRÍTICAS:
+- O campo que você DEVE usar em current_field é EXATAMENTE: "{expected_field}"
+- Se expected_field é "welcome", dê boas-vindas e peça o CNPJ. current_field = "welcome", field_value = null.
+- Se expected_field é "completed", parabenize. current_field = "completed", field_value = null.
+- Para qualquer outro expected_field: o cliente está enviando o valor desse campo. Extraia o valor da query e retorne.
+- NUNCA mude o current_field para outro valor diferente de expected_field.
 - NUNCA pule campos ou mude a ordem.
 - Seja amigável, use emojis ocasionalmente, e dê dicas sobre o formato esperado.
 - Para senha, diga que deve ser exatamente 6 dígitos numéricos.
@@ -236,20 +242,15 @@ NÃO avance para o próximo campo.
 ## Formato de resposta (JSON OBRIGATÓRIO):
 Responda SEMPRE em JSON válido com esta estrutura:
 ```json
-{{
+{{{{
   "answer": "Sua mensagem amigável para o cliente",
-  "current_field": "nome_do_campo_atual",
+  "current_field": "{expected_field}",
   "field_value": "valor_extraido_ou_null"
-}}
+}}}}
 ```
 
-Valores especiais para current_field:
-- "welcome" — quando o cliente está iniciando (primeira mensagem). field_value deve ser null.
-- "completed" — quando todos os 10 campos foram coletados. field_value deve ser null.
-- Nome do campo (ex: "cnpj") — quando está pedindo ou recebendo esse campo.
-
 field_value:
-- null quando está PEDINDO o campo pela primeira vez
+- null quando é a primeira mensagem (welcome) ou quando está PEDINDO o campo
 - O valor que o cliente digitou quando está RECEBENDO a resposta do campo
 
 ## Histórico da Conversa:
@@ -323,6 +324,7 @@ def _handle_onboarding_chat(
     """
     Processa mensagem de onboarding: pede campos um a um via LLM.
     O LLM retorna JSON com current_field + field_value.
+    O BFA envia expected_field para que o LLM saiba exatamente qual campo tratar.
     """
     # Build history text
     history_text = "Sem histórico anterior."
@@ -338,14 +340,23 @@ def _handle_onboarding_chat(
     if request.validation_error:
         validation_error = f"ERRO DO BFA: {request.validation_error}\nPeça o MESMO campo novamente explicando o erro."
 
+    # Expected field from BFA (deterministic state)
+    expected_field = request.expected_field or "welcome"
+    collected_fields = request.collected_fields or []
+    collected_str = ", ".join(collected_fields) if collected_fields else "nenhum"
+
     prompt = ONBOARDING_SYSTEM_PROMPT.format(
         history_text=history_text,
         validation_error=validation_error,
+        expected_field=expected_field,
+        collected_fields=collected_str,
     )
 
     reasoning_steps = [
         "Intent: open_account",
         "Contexto: onboarding",
+        f"Expected field: {expected_field}",
+        f"Collected fields: {collected_str}",
         f"Validation error: {request.validation_error or 'nenhum'}",
     ]
 

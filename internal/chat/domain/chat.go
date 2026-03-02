@@ -79,6 +79,15 @@ type ChatAgentRequest struct {
 	// Se vazio, o agente avança normalmente.
 	ValidationError string `json:"validation_error,omitempty"`
 
+	// ExpectedField indica qual campo o agente deve pedir/receber agora.
+	// Preenchido pelo BFA com base na sessão de onboarding.
+	// Evita que o LLM precise "adivinhar" em qual etapa está.
+	ExpectedField string `json:"expected_field,omitempty"`
+
+	// CollectedFields lista os campos já aceitos pelo BFA.
+	// O agente usa para saber o que já foi coletado.
+	CollectedFields []string `json:"collected_fields,omitempty"`
+
 	// Profile e Transactions são opcionais — usados pelo /v1/agent/invoke.
 	Profile      any   `json:"profile,omitempty"`
 	Transactions []any `json:"transactions,omitempty"`
@@ -153,6 +162,29 @@ type OnboardingSession struct {
 
 	// LastQuery guarda a última query do cliente (para reenviar ao agent com validation_error)
 	LastQuery string
+}
+
+// NextExpectedField retorna o próximo campo que ainda não foi coletado.
+// Segue a ordem fixa de OnboardingFields.
+// Se todos foram coletados, retorna "completed".
+func (s *OnboardingSession) NextExpectedField() string {
+	for _, field := range OnboardingFields {
+		if _, ok := s.CollectedData[field]; !ok {
+			return field
+		}
+	}
+	return "completed"
+}
+
+// CollectedFieldNames retorna os nomes dos campos já coletados.
+func (s *OnboardingSession) CollectedFieldNames() []string {
+	var names []string
+	for _, field := range OnboardingFields {
+		if _, ok := s.CollectedData[field]; ok {
+			names = append(names, field)
+		}
+	}
+	return names
 }
 
 // ============================================================

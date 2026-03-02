@@ -125,6 +125,13 @@ func (s *OnboardingStrategy) Handle(ctx context.Context, chatCtx *domain.ChatCon
 	// Garante que existe uma sessão para esse cliente
 	session := s.getOrCreateSession(chatCtx.CustomerID)
 
+	// Calcula qual campo o agente deve pedir/receber
+	expectedField := "welcome"
+	if session.Started {
+		expectedField = session.NextExpectedField()
+	}
+	collectedFields := session.CollectedFieldNames()
+
 	// Monta o request para o Agent Python
 	agentReq := &domain.ChatAgentRequest{
 		Query:           chatCtx.Query,
@@ -132,16 +139,20 @@ func (s *OnboardingStrategy) Handle(ctx context.Context, chatCtx *domain.ChatCon
 		Context:         "onboarding",
 		History:         chatCtx.History,
 		ValidationError: chatCtx.ValidationError,
+		ExpectedField:   expectedField,
+		CollectedFields: collectedFields,
 	}
 
 	// Chama o Agent Python
 	s.logger.Info("onboarding: calling agent",
 		zap.String("customer_id", chatCtx.CustomerID),
 		zap.String("context", "onboarding"),
+		zap.String("expected_field", expectedField),
+		zap.Strings("collected_fields", collectedFields),
 		zap.String("validation_error", agentReq.ValidationError),
 		zap.Int("history_len", len(agentReq.History)),
 		zap.Bool("session_started", session.Started),
-		zap.Int("collected_fields", len(session.CollectedData)),
+		zap.Int("collected_count", len(session.CollectedData)),
 	)
 	agentResp, err := s.agentClient.SendChat(ctx, agentReq)
 	if err != nil {
@@ -270,6 +281,8 @@ func (s *OnboardingStrategy) handleFieldValidation(
 			Context:         "onboarding",
 			History:         chatCtx.History,
 			ValidationError: validationErr.Error(),
+			ExpectedField:   field,
+			CollectedFields: session.CollectedFieldNames(),
 		}
 
 		s.logger.Info("onboarding: retrying agent with validation_error",

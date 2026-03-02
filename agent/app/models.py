@@ -99,6 +99,8 @@ class ChatRequest(BaseModel):
     context: str = ""
     history: list[ChatHistoryEntry] = Field(default_factory=list)
     validation_error: str = ""
+    expected_field: str = ""
+    collected_fields: list[str] = Field(default_factory=list)
     profile: dict | None = None
     transactions: list[dict] = Field(default_factory=list)
 
