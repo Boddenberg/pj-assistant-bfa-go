@@ -33,11 +33,11 @@ func NewValidatorRegistry(repo AccountRepository) ValidatorRegistry {
 	}
 }
 
-// ============================================================
-// Implementações
-// ============================================================
+/*
+ * Implementações
+ */
 
-// --- CNPJ: 14 dígitos + único ---
+/* CNPJ: 14 dígitos + único */
 
 type cnpjValidator struct {
 	repo AccountRepository
@@ -54,7 +54,7 @@ func (v *cnpjValidator) Validate(ctx context.Context, value string, _ *Session) 
 	return nil
 }
 
-// --- Texto com tamanho mínimo (razaoSocial, nomeFantasia, representanteName) ---
+/* Texto com tamanho mínimo (razaoSocial, nomeFantasia, representanteName) */
 
 type minLenValidator struct {
 	field string
@@ -69,7 +69,7 @@ func (v *minLenValidator) Validate(_ context.Context, value string, _ *Session) 
 	return nil
 }
 
-// --- Email: contém @ e .com ---
+/* Email: contém @ e .com */
 
 type emailValidator struct{}
 
@@ -83,7 +83,7 @@ func (v *emailValidator) Validate(_ context.Context, value string, _ *Session) e
 	return nil
 }
 
-// --- CPF: 11 dígitos + único ---
+/* CPF: 11 dígitos + único */
 
 type cpfValidator struct {
 	repo AccountRepository
@@ -100,7 +100,7 @@ func (v *cpfValidator) Validate(ctx context.Context, value string, _ *Session) e
 	return nil
 }
 
-// --- Telefone: mínimo 10 dígitos ---
+/* Telefone: mínimo 10 dígitos */
 
 type phoneValidator struct{}
 
@@ -112,7 +112,7 @@ func (v *phoneValidator) Validate(_ context.Context, value string, _ *Session) e
 	return nil
 }
 
-// --- Data de nascimento: DD/MM/AAAA, 18+ ---
+/* Data de nascimento: DD/MM/AAAA, 18+ */
 
 type birthDateValidator struct{}
 
@@ -136,7 +136,7 @@ func (v *birthDateValidator) Validate(_ context.Context, value string, _ *Sessio
 	return nil
 }
 
-// --- Senha: exatamente 6 dígitos numéricos ---
+/* Senha: exatamente 6 dígitos numéricos */
 
 type passwordValidator struct{}
 
@@ -153,7 +153,7 @@ func (v *passwordValidator) Validate(_ context.Context, value string, _ *Session
 	return nil
 }
 
-// --- Confirmação de senha: igual ao password salvo na sessão ---
+/* Confirmação de senha: igual ao password salvo na sessão */
 
 type passwordConfirmationValidator struct{}
 
@@ -168,9 +168,9 @@ func (v *passwordConfirmationValidator) Validate(_ context.Context, value string
 	return nil
 }
 
-// ============================================================
-// Helpers
-// ============================================================
+/*
+ * Helpers
+ */
 
 func onlyDigits(s string) string {
 	var b strings.Builder

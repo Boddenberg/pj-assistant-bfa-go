@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// ============================================================
-// Bill Payments (Pagamento de Contas / Boletos)
-// ============================================================
+/*
+ * Bill Payments (Pagamento de Contas / Boletos)
+ */
 
 // BarcodeValidationRequest is sent to validate a barcode or digitable line.
 type BarcodeValidationRequest struct {
@@ -63,9 +63,9 @@ type BillPayment struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
-// ============================================================
-// Debit Purchases
-// ============================================================
+/*
+ * Debit Purchases
+ */
 
 // DebitPurchase represents a debit card purchase.
 type DebitPurchase struct {
@@ -82,9 +82,9 @@ type DebitPurchase struct {
 	IsContactless   bool      `json:"is_contactless"`
 }
 
-// ============================================================
-// Bill Payment API Response types (matches frontend spec)
-// ============================================================
+/*
+ * Bill Payment API Response types (matches frontend spec)
+ */
 
 // BarcodeData is the nested validation data inside BarcodeValidationAPIResponse.
 type BarcodeData struct {

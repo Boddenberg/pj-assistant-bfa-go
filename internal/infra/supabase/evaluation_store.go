@@ -5,9 +5,9 @@ import (
 	"fmt"
 )
 
-// ============================================================
-// LLM Evaluations — insert via PostgREST
-// ============================================================
+/*
+ * LLM Evaluations — insert via PostgREST
+ */
 
 // EvaluationRow representa a linha principal da tabela llm_evaluations.
 type EvaluationRow struct {

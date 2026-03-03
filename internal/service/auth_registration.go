@@ -10,9 +10,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// ============================================================
-// Register — POST /v1/auth/register
-// ============================================================
+/*
+ * Register — POST /v1/auth/register
+ */
 
 func (s *AuthService) Register(ctx context.Context, req *domain.RegisterRequest) (*domain.RegisterResponse, error) {
 	ctx, span := authTracer.Start(ctx, "AuthService.Register")

@@ -10,9 +10,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// PIX Receipts (Comprovantes)
-// ============================================================
+/*
+ * PIX Receipts (Comprovantes)
+ */
 
 func formatReceiptResponse(r *domain.PixReceipt) *domain.PixReceiptResponse {
 	// Comprovante shows ONLY the PIX amount transferred.

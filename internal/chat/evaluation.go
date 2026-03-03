@@ -7,9 +7,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// EvaluationRepository — persiste resultado do LLM-as-Judge
-// ============================================================
+/*
+ * EvaluationRepository — persiste resultado do LLM-as-Judge
+ */
 
 // EvaluationRepository persiste avaliações do LLM-as-Judge.
 type EvaluationRepository interface {
@@ -17,7 +17,7 @@ type EvaluationRepository interface {
 	SaveEvaluation(ctx context.Context, eval EvaluateResponse) error
 }
 
-// --- Supabase implementation ---
+/* Supabase implementation */
 
 type SupabaseEvaluationRepository struct {
 	sb     *supabase.Client
@@ -95,7 +95,7 @@ func (r *SupabaseEvaluationRepository) SaveEvaluation(ctx context.Context, eval 
 	return nil
 }
 
-// --- In-memory stub (para testes) ---
+/* In-memory stub (para testes) */
 
 type InMemoryEvaluationRepository struct {
 	Evaluations []EvaluateResponse

@@ -30,7 +30,7 @@ type AccountData struct {
 	Conta      string `json:"conta"`
 }
 
-// --- Stub in-memory (para testes e dev sem Supabase) ---
+/* Stub in-memory (para testes e dev sem Supabase) */
 
 type InMemoryAccountRepository struct {
 	cnpjs  map[string]bool

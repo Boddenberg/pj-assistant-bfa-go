@@ -25,7 +25,7 @@ var tracer = otel.Tracer("handler")
 func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatSvc *chat.Service, chatMetrics chat.MetricsRepository, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
 	r := chi.NewRouter()
 
-	// --- Middleware ---
+	/* Middleware */
 	allowedLocalOrigins := make(map[string]bool)
 	for port := 8080; port <= 8090; port++ {
 		allowedLocalOrigins[fmt.Sprintf("http://localhost:%d", port)] = true
@@ -52,41 +52,41 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Heartbeat("/ping"))
 
-	// --- Operational endpoints ---
+	/* Operational endpoints */
 	r.Get("/healthz", healthzHandler(bankSvc, logger))
 	r.Get("/readyz", readyzHandler())
 	r.Handle("/metrics", promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{}))
 
-	// --- API v1 ---
+	/* API v1 */
 	r.Route("/v1", func(r chi.Router) {
 
-		// =============================================
-		// 1. Assistente IA
-		// =============================================
+		/*
+		 * 1. Assistente IA
+		 */
 		// GET  — rota do case: busca profile+transactions+agent via query param ?q=
 		// POST — mesma lógica mas recebe message via body JSON
 		r.Get("/assistant/{customerId}", assistantGetHandler(svc, logger))
 		r.Post("/assistant/{customerId}", assistantHandler(svc, logger))
 
-		// =============================================
-		// 2. Cliente
-		// =============================================
+		/*
+		 * 2. Cliente
+		 */
 		r.Get("/customers/{customerId}/profile", getProfileHandler(svc, logger))
 
-		// =============================================
-		// 3. Transações
-		// =============================================
+		/*
+		 * 3. Transações
+		 */
 		r.Get("/customers/{customerId}/transactions", getTransactionsHandler(svc, logger))
 		r.Get("/customers/{customerId}/transactions/summary", getTransactionsSummaryHandler(bankSvc, logger))
 
-		// =============================================
-		// 4. Métricas
-		// =============================================
+		/*
+		 * 4. Métricas
+		 */
 		r.Get("/metrics/agent", agentMetricsHandler(metrics, logger))
 
-		// =============================================
-		// 5. Pix
-		// =============================================
+		/*
+		 * 5. Pix
+		 */
 		r.Get("/pix/keys/lookup", pixKeyLookupHandler(bankSvc, logger))
 		r.Get("/pix/lookup", pixKeyLookupHandler(bankSvc, logger))
 		r.Post("/pix/transfer", pixTransferHandler(bankSvc, logger))
@@ -101,16 +101,16 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Get("/pix/transfers/{transferId}/receipt", getPixReceiptByTransferHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/pix/receipts", listPixReceiptsHandler(bankSvc, logger))
 
-		// =============================================
-		// 6. Pagamento de Boletos
-		// =============================================
+		/*
+		 * 6. Pagamento de Boletos
+		 */
 		r.Post("/bills/validate", billsValidateHandler(bankSvc, logger))
 		r.Post("/bills/pay", billsPayHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/bills/history", billsHistoryHandler(bankSvc, logger))
 
-		// =============================================
-		// 7. Cartão de Crédito
-		// =============================================
+		/*
+		 * 7. Cartão de Crédito
+		 */
 		r.Get("/customers/{customerId}/cards", listCardsHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/credit-cards", listCardsHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/credit-limit", creditLimitHandler(bankSvc, logger))
@@ -125,15 +125,15 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Post("/customers/{customerId}/credit-cards/{cardId}/cancel", cardCancelHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/credit-cards/{cardId}/invoice", cardInvoiceCurrentHandler(bankSvc, logger))
 
-		// =============================================
-		// 8. Análise Financeira & Débito
-		// =============================================
+		/*
+		 * 8. Análise Financeira & Débito
+		 */
 		r.Get("/customers/{customerId}/financial/summary", financialSummaryHandler(bankSvc, logger))
 		r.Post("/debit/purchase", debitPurchaseHandler(bankSvc, logger))
 
-		// =============================================
-		// Extra internal endpoints
-		// =============================================
+		/*
+		 * Extra internal endpoints
+		 */
 		r.Get("/customers/{customerId}/accounts", listAccountsHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/accounts/{accountId}", getAccountHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/accounts/{accountId}/balance", getBalanceHandler(bankSvc, logger))
@@ -158,28 +158,28 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		r.Post("/customers/{customerId}/analytics/budgets", createBudgetHandler(bankSvc, logger))
 		r.Put("/customers/{customerId}/analytics/budgets/{budgetId}", updateBudgetHandler(bankSvc, logger))
 
-		// =============================================
-		// Pix Key Registration
-		// =============================================
+		/*
+		 * Pix Key Registration
+		 */
 		r.Post("/pix/keys/register", pixKeyRegisterHandler(bankSvc, logger))
 
-		// =============================================
-		// Invoice Payment
-		// =============================================
+		/*
+		 * Invoice Payment
+		 */
 		r.Post("/customers/{customerId}/credit-cards/{cardId}/invoice/pay", invoicePayHandler(bankSvc, logger))
 
-		// =============================================
-		// Dev Tools (testing helpers)
-		// =============================================
+		/*
+		 * Dev Tools (testing helpers)
+		 */
 		r.Post("/dev/add-balance", devAddBalanceHandler(bankSvc, logger))
 		r.Post("/dev/set-credit-limit", devSetCreditLimitHandler(bankSvc, logger))
 		r.Post("/dev/generate-transactions", devGenerateTransactionsHandler(bankSvc, logger))
 		r.Post("/dev/add-card-purchase", devAddCardPurchaseHandler(bankSvc, logger))
 		r.Post("/dev/card-purchase", devAddCardPurchaseHandler(bankSvc, logger))
 
-		// =============================================
-		// 9. Autenticação
-		// =============================================
+		/*
+		 * 9. Autenticação
+		 */
 		r.Route("/auth", func(r chi.Router) {
 			if authSvc == nil {
 				r.Handle("/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,9 +202,9 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 			})
 		})
 
-		// =============================================
-		// 10. Profile & Representative (protected)
-		// =============================================
+		/*
+		 * 10. Profile & Representative (protected)
+		 */
 		if authSvc != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(JWTAuthMiddleware(authSvc, logger))
@@ -212,9 +212,9 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 				r.Put("/customers/{customerId}/representative", updateRepresentativeHandler(authSvc, logger))
 			})
 		}
-		// =============================================
-		// 11. Chat IA (onboarding orquestrado pelo BFA)
-		// =============================================
+		/*
+		 * 11. Chat IA (onboarding orquestrado pelo BFA)
+		 */
 		r.Post("/chat", chat.Handler(chatSvc, logger))
 		r.Post("/chat/{customerID}", chat.Handler(chatSvc, logger))
 		if chatMetrics != nil {
@@ -225,9 +225,9 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 	return r
 }
 
-// ============================================================
-// Operational handlers (healthz, readyz, agent metrics)
-// ============================================================
+/*
+ * Operational handlers (healthz, readyz, agent metrics)
+ */
 
 func healthzHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -9,9 +9,9 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// PIX Receipts store — save, get, list
-// ============================================================
+/*
+ * PIX Receipts store — save, get, list
+ */
 
 func (c *Client) SavePixReceipt(ctx context.Context, receipt *domain.PixReceipt) (*domain.PixReceipt, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.SavePixReceipt")

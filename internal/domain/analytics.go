@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// ============================================================
-// Spending Analytics
-// ============================================================
+/*
+ * Spending Analytics
+ */
 
 // SpendingSummary represents aggregated spending data for a period.
 type SpendingSummary struct {
@@ -53,9 +53,9 @@ type SpendingBudget struct {
 	IsActive          bool    `json:"is_active"`
 }
 
-// ============================================================
-// Financial Summary & Analytics API types (matches frontend spec)
-// ============================================================
+/*
+ * Financial Summary & Analytics API types (matches frontend spec)
+ */
 
 // FinancialSummary is returned by GET /v1/customers/{id}/financial/summary.
 type FinancialSummary struct {
@@ -124,9 +124,9 @@ type MonthlyTrend struct {
 	Balance  float64 `json:"balance"`
 }
 
-// ============================================================
-// Favorites / Contacts
-// ============================================================
+/*
+ * Favorites / Contacts
+ */
 
 // Favorite represents a saved payment recipient.
 type Favorite struct {
@@ -147,9 +147,9 @@ type Favorite struct {
 	LastUsedAt        *time.Time `json:"last_used_at,omitempty"`
 }
 
-// ============================================================
-// Transaction Limits
-// ============================================================
+/*
+ * Transaction Limits
+ */
 
 // TransactionLimit represents configurable limits per transaction type.
 type TransactionLimit struct {
@@ -165,9 +165,9 @@ type TransactionLimit struct {
 	NightlyDailyLimit  *float64 `json:"nightly_daily_limit,omitempty"`
 }
 
-// ============================================================
-// Notifications
-// ============================================================
+/*
+ * Notifications
+ */
 
 // Notification represents an in-app or push notification.
 type Notification struct {

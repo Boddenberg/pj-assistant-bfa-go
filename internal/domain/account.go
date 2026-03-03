@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// ============================================================
-// Accounts
-// ============================================================
+/*
+ * Accounts
+ */
 
 // Account represents a PJ bank account.
 type Account struct {
@@ -24,9 +24,9 @@ type Account struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
-// ============================================================
-// Transactions (bank statement)
-// ============================================================
+/*
+ * Transactions (bank statement)
+ */
 
 // Transaction represents a single financial transaction.
 type Transaction struct {

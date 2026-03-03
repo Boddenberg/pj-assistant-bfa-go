@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// ============================================================
-// Credit Card PJ
-// ============================================================
+/*
+ * Credit Card PJ
+ */
 
 // CreditCardRequest is the payload to request a new PJ credit card.
 type CreditCardRequest struct {
@@ -82,9 +82,9 @@ type CreditCardInvoice struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// ============================================================
-// Credit Card API Response types (matches frontend spec)
-// ============================================================
+/*
+ * Credit Card API Response types (matches frontend spec)
+ */
 
 // CreditCardAPIResponse is returned by GET /v1/customers/{id}/cards.
 type CreditCardAPIResponse struct {

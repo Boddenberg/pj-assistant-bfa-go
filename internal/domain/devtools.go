@@ -1,8 +1,8 @@
 package domain
 
-// ============================================================
-// Dev Tools — endpoints for development/testing
-// ============================================================
+/*
+ * Dev Tools — endpoints for development/testing
+ */
 
 // DevAddBalanceRequest is the body for POST /v1/dev/add-balance.
 type DevAddBalanceRequest struct {

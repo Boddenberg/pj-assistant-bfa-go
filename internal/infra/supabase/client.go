@@ -106,7 +106,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string) ([]byte, er
 	return body, nil
 }
 
-// --- Profile API (implements port.ProfileFetcher) ---
+/* Profile API (implements port.ProfileFetcher) */
 
 // supabaseProfile maps Supabase table columns to our domain.
 type supabaseProfile struct {
@@ -170,7 +170,7 @@ func (c *Client) GetProfile(ctx context.Context, customerID string) (*domain.Cus
 	return profile, nil
 }
 
-// --- Transactions API (implements port.TransactionsFetcher) ---
+/* Transactions API (implements port.TransactionsFetcher) */
 
 // supabaseTransaction maps Supabase table columns.
 type supabaseTransaction struct {

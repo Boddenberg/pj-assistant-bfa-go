@@ -10,9 +10,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// HTTP helpers for POST, PATCH, DELETE
-// ============================================================
+/*
+ * HTTP helpers for POST, PATCH, DELETE
+ */
 
 func (c *Client) doPost(ctx context.Context, table string, data map[string]any) ([]byte, error) {
 	url := fmt.Sprintf("%s/rest/v1/%s", c.baseURL, table)

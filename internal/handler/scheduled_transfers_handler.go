@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Scheduled Transfers — create, delete, list
-// ============================================================
+/*
+ * Scheduled Transfers — create, delete, list
+ */
 
 func pixScheduleHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -14,9 +14,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Bill Payments
-// ============================================================
+/*
+ * Bill Payments
+ */
 
 var digitOnlyRegex = regexp.MustCompile(`[^0-9]`)
 
@@ -221,9 +221,9 @@ func (s *BankingService) CancelBillPayment(ctx context.Context, customerID, bill
 	return s.store.UpdateBillPaymentStatus(ctx, billID, "cancelled")
 }
 
-// ============================================================
-// Debit Purchases
-// ============================================================
+/*
+ * Debit Purchases
+ */
 
 func (s *BankingService) ListDebitPurchases(ctx context.Context, customerID string, page, pageSize int) ([]domain.DebitPurchase, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.ListDebitPurchases")

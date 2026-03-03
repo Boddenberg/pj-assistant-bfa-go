@@ -10,11 +10,11 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// Bill Payments & Debit Purchases — CRUD via PostgREST
-// ============================================================
+/*
+ * Bill Payments & Debit Purchases — CRUD via PostgREST
+ */
 
-// --- Bill Payments ---
+/* Bill Payments */
 
 func (c *Client) CreateBillPayment(ctx context.Context, customerID string, req *domain.BillPaymentRequest, validation *domain.BarcodeValidationResponse) (*domain.BillPayment, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.CreateBillPayment")
@@ -112,7 +112,7 @@ func (c *Client) UpdateBillPaymentStatus(ctx context.Context, billID, status str
 	})
 }
 
-// --- Debit Purchases ---
+/* Debit Purchases */
 
 func (c *Client) ListDebitPurchases(ctx context.Context, customerID string, page, pageSize int) ([]domain.DebitPurchase, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListDebitPurchases")

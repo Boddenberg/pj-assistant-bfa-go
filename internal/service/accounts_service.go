@@ -29,9 +29,9 @@ func NewBankingService(store port.BankingStore, metrics *observability.Metrics, 
 	return &BankingService{store: store, metrics: metrics, logger: logger}
 }
 
-// ============================================================
-// Accounts
-// ============================================================
+/*
+ * Accounts
+ */
 
 func (s *BankingService) ListAccounts(ctx context.Context, customerID string) ([]domain.Account, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.ListAccounts")

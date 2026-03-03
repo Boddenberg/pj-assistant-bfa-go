@@ -9,9 +9,9 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// PIX Keys store — list, lookup, create, delete
-// ============================================================
+/*
+ * PIX Keys store — list, lookup, create, delete
+ */
 
 func (c *Client) ListPixKeys(ctx context.Context, customerID string) ([]domain.PixKey, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListPixKeys")

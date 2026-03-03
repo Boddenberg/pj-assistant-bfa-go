@@ -14,9 +14,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// ============================================================
-// PasswordResetRequest — POST /v1/auth/password/reset-request
-// ============================================================
+/*
+ * PasswordResetRequest — POST /v1/auth/password/reset-request
+ */
 
 func (s *AuthService) PasswordResetRequest(ctx context.Context, req *domain.PasswordResetRequestBody) (*domain.PasswordResetRequestResponse, error) {
 	ctx, span := authTracer.Start(ctx, "AuthService.PasswordResetRequest")
@@ -56,9 +56,9 @@ func (s *AuthService) PasswordResetRequest(ctx context.Context, req *domain.Pass
 	}, nil
 }
 
-// ============================================================
-// PasswordResetConfirm — POST /v1/auth/password/reset-confirm
-// ============================================================
+/*
+ * PasswordResetConfirm — POST /v1/auth/password/reset-confirm
+ */
 
 func (s *AuthService) PasswordResetConfirm(ctx context.Context, req *domain.PasswordResetConfirmRequest) error {
 	ctx, span := authTracer.Start(ctx, "AuthService.PasswordResetConfirm")
@@ -112,9 +112,9 @@ func (s *AuthService) PasswordResetConfirm(ctx context.Context, req *domain.Pass
 	return nil
 }
 
-// ============================================================
-// ChangePassword — PUT /v1/auth/password
-// ============================================================
+/*
+ * ChangePassword — PUT /v1/auth/password
+ */
 
 func (s *AuthService) ChangePassword(ctx context.Context, customerID string, req *domain.ChangePasswordRequest) error {
 	ctx, span := authTracer.Start(ctx, "AuthService.ChangePassword")
@@ -158,9 +158,9 @@ func (s *AuthService) ChangePassword(ctx context.Context, customerID string, req
 	return nil
 }
 
-// ============================================================
-// Internal helpers
-// ============================================================
+/*
+ * Internal helpers
+ */
 
 func generateVerificationCode() string {
 	code := ""

@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// ============================================================
-// Auth — Request / Response types (matches frontend API contract)
-// ============================================================
+/*
+ * Auth — Request / Response types (matches frontend API contract)
+ */
 
 // RegisterRequest is the body for POST /v1/auth/register.
 type RegisterRequest struct {

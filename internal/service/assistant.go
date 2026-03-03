@@ -93,7 +93,7 @@ func (a *Assistant) GetAssistantResponse(ctx context.Context, customerID string,
 		a.metrics.RecordRequestDuration("assistant", time.Since(start))
 	}()
 
-	// --- Step 1: Fetch profile + transactions concurrently ---
+	/* Step 1: Fetch profile + transactions concurrently */
 	var (
 		profile      *domain.CustomerProfile
 		transactions []domain.Transaction
@@ -145,7 +145,7 @@ func (a *Assistant) GetAssistantResponse(ctx context.Context, customerID string,
 		return nil, err
 	}
 
-	// --- Step 2: Call AI Agent ---
+	/* Step 2: Call AI Agent */
 	agentReq := &domain.AgentRequest{
 		CustomerID:   customerID,
 		Profile:      profile,
@@ -166,7 +166,7 @@ func (a *Assistant) GetAssistantResponse(ctx context.Context, customerID string,
 		return nil, fmt.Errorf("agent call: %w", err)
 	}
 
-	// --- Step 3: Record token metrics ---
+	/* Step 3: Record token metrics */
 	a.metrics.RecordTokens(agentResp.TokensUsed.PromptTokens, agentResp.TokensUsed.CompletionTokens)
 
 	return &domain.InternalAssistantResult{

@@ -8,9 +8,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Transcript — registro de cada turno para LLM-as-Judge
-// ============================================================
+/*
+ * Transcript — registro de cada turno para LLM-as-Judge
+ */
 
 // Transcript representa um turno completo da conversa para avaliação.
 type Transcript struct {
@@ -38,7 +38,7 @@ type TranscriptRepository interface {
 	MarkTranscriptsEvaluated(ctx context.Context, customerID string) error
 }
 
-// --- Supabase implementation ---
+/* Supabase implementation */
 
 type SupabaseTranscriptRepository struct {
 	sb     *supabase.Client
@@ -113,7 +113,7 @@ func (r *SupabaseTranscriptRepository) MarkTranscriptsEvaluated(ctx context.Cont
 	return r.sb.MarkTranscriptsEvaluated(ctx, customerID)
 }
 
-// --- In-memory stub (para testes) ---
+/* In-memory stub (para testes) */
 
 type InMemoryTranscriptRepository struct {
 	Entries []Transcript

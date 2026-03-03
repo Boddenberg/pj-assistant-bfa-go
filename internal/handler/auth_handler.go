@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// 9. Autenticação
-// ============================================================
+/*
+ * 9. Autenticação
+ */
 
 func authRegisterHandler(authSvc *service.AuthService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -165,9 +165,9 @@ func authChangePasswordHandler(authSvc *service.AuthService, logger *zap.Logger)
 	}
 }
 
-// ============================================================
-// 10. Profile & Representative
-// ============================================================
+/*
+ * 10. Profile & Representative
+ */
 
 func updateProfileHandler(authSvc *service.AuthService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

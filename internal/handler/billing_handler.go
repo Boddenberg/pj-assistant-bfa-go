@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// 6. Pagamento de Boletos
-// ============================================================
+/*
+ * 6. Pagamento de Boletos
+ */
 
 func billsValidateHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -147,9 +147,9 @@ func billsHistoryHandler(bankSvc *service.BankingService, logger *zap.Logger) ht
 	}
 }
 
-// ============================================================
-// 8b. Débito
-// ============================================================
+/*
+ * 8b. Débito
+ */
 
 func debitPurchaseHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

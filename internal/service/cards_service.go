@@ -13,9 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Credit Cards — Business Constants
-// ============================================================
+/*
+ * Credit Cards — Business Constants
+ */
 
 const (
 	// MinimumPaymentRate is the percentage of the invoice total used
@@ -27,9 +27,9 @@ const (
 	DefaultTransactionPageSize = 500
 )
 
-// ============================================================
-// Credit Cards
-// ============================================================
+/*
+ * Credit Cards
+ */
 
 func (s *BankingService) RequestCreditCard(ctx context.Context, customerID string, req *domain.CreditCardRequest) (*domain.CreditCard, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.RequestCreditCard")
@@ -346,9 +346,9 @@ func sumTransactionsForMonth(txns []domain.CreditCardTransaction, month string) 
 	return total
 }
 
-// ============================================================
-// Invoice Payment
-// ============================================================
+/*
+ * Invoice Payment
+ */
 
 // PayInvoice pays a credit card invoice (total, minimum or custom).
 func (s *BankingService) PayInvoice(ctx context.Context, customerID, cardID string, req *domain.InvoicePayRequest) (*domain.InvoicePayResponse, error) {

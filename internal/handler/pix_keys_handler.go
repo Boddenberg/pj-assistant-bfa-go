@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// PIX Keys — lookup, register, list, delete
-// ============================================================
+/*
+ * PIX Keys — lookup, register, list, delete
+ */
 
 func pixKeyLookupHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Helper: mock Agent Python server
-// ============================================================
+/*
+ * Helper: mock Agent Python server
+ */
 
 func mockAgentServer(response AgentResponse) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35,9 +35,9 @@ func newTestService(agentURL string) *Service {
 
 var ctx = context.Background()
 
-// ============================================================
-// Test: CNPJ validation
-// ============================================================
+/*
+ * Test: CNPJ validation
+ */
 
 func TestValidateCNPJ_Valid(t *testing.T) {
 	repo := NewInMemoryAccountRepository(zap.NewNop())
@@ -64,9 +64,9 @@ func TestValidateCNPJ_AlreadyExists(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Password confirmation
-// ============================================================
+/*
+ * Test: Password confirmation
+ */
 
 func TestValidatePasswordConfirmation_Match(t *testing.T) {
 	v := &passwordConfirmationValidator{}
@@ -92,9 +92,9 @@ func TestValidatePasswordConfirmation_NoPasswordInSession(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Birth date (18+)
-// ============================================================
+/*
+ * Test: Birth date (18+)
+ */
 
 func TestValidateBirthDate_Valid(t *testing.T) {
 	v := &birthDateValidator{}
@@ -117,9 +117,9 @@ func TestValidateBirthDate_InvalidFormat(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Password (6 digits)
-// ============================================================
+/*
+ * Test: Password (6 digits)
+ */
 
 func TestValidatePassword_Valid(t *testing.T) {
 	v := &passwordValidator{}
@@ -142,9 +142,9 @@ func TestValidatePassword_WrongLength(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Email
-// ============================================================
+/*
+ * Test: Email
+ */
 
 func TestValidateEmail_Valid(t *testing.T) {
 	v := &emailValidator{}
@@ -181,9 +181,9 @@ func TestValidateEmail_ValidDotComBr(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: CPF
-// ============================================================
+/*
+ * Test: CPF
+ */
 
 func TestValidateCPF_Valid(t *testing.T) {
 	repo := NewInMemoryAccountRepository(zap.NewNop())
@@ -201,9 +201,9 @@ func TestValidateCPF_TooShort(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Phone
-// ============================================================
+/*
+ * Test: Phone
+ */
 
 func TestValidatePhone_Valid(t *testing.T) {
 	v := &phoneValidator{}
@@ -219,9 +219,9 @@ func TestValidatePhone_TooShort(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Welcome step — agent decides, BFA passes through
-// ============================================================
+/*
+ * Test: Welcome step — agent decides, BFA passes through
+ */
 
 func TestProcessTurn_Welcome(t *testing.T) {
 	agentResp := AgentResponse{
@@ -266,10 +266,10 @@ func TestProcessTurn_Welcome(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: step == next_step (agent inline rejection)
-// BFA also validates and rejects → sends validation_error to agent
-// ============================================================
+/*
+ * Test: step == next_step (agent inline rejection)
+ * BFA also validates and rejects → sends validation_error to agent
+ */
 
 func TestProcessTurn_InlineRejection(t *testing.T) {
 	callCount := 0
@@ -324,10 +324,10 @@ func TestProcessTurn_InlineRejection(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Valid field — agent says step=cnpj, next_step=razaoSocial
-// BFA validates, saves, passes through agent response
-// ============================================================
+/*
+ * Test: Valid field — agent says step=cnpj, next_step=razaoSocial
+ * BFA validates, saves, passes through agent response
+ */
 
 func TestProcessTurn_ValidField(t *testing.T) {
 	// Agent says: step=cnpj, next_step=razaoSocial (accepted)
@@ -370,11 +370,11 @@ func TestProcessTurn_ValidField(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Agent accepted but BFA rejects (validation mismatch)
-// Agent says step=email, next_step=representanteName (accepted)
-// BFA rejects because "not-an-email" fails regex
-// ============================================================
+/*
+ * Test: Agent accepted but BFA rejects (validation mismatch)
+ * Agent says step=email, next_step=representanteName (accepted)
+ * BFA rejects because "not-an-email" fails regex
+ */
 
 func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 	callCount := 0
@@ -428,9 +428,9 @@ func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: null step → normal conversation (pass-through)
-// ============================================================
+/*
+ * Test: null step → normal conversation (pass-through)
+ */
 
 func TestProcessTurn_NullStep(t *testing.T) {
 	agentResp := AgentResponse{
@@ -461,10 +461,10 @@ func TestProcessTurn_NullStep(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Full onboarding flow — agent drives, BFA only validates
-// Reproduces the exact cross-contamination bugs found in testing
-// ============================================================
+/*
+ * Test: Full onboarding flow — agent drives, BFA only validates
+ * Reproduces the exact cross-contamination bugs found in testing
+ */
 
 func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 	// The agent decides the order: cnpj → razaoSocial → nomeFantasia → email → ...
@@ -592,10 +592,10 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: CPF-like input saved as representanteName
-// Agent says step=representanteName → BFA validates with representanteName validator
-// ============================================================
+/*
+ * Test: CPF-like input saved as representanteName
+ * Agent says step=representanteName → BFA validates with representanteName validator
+ */
 
 func TestProcessTurn_CPFAsName_SavedCorrectly(t *testing.T) {
 	// Agent says step=representanteName, next_step=representanteCpf
@@ -629,11 +629,11 @@ func TestProcessTurn_CPFAsName_SavedCorrectly(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Inline rejection where BFA accepts (BFA overrides agent)
-// Agent says step==next_step (rejected), but BFA validates OK
-// → BFA saves, re-calls agent so it can advance
-// ============================================================
+/*
+ * Test: Inline rejection where BFA accepts (BFA overrides agent)
+ * Agent says step==next_step (rejected), but BFA validates OK
+ * → BFA saves, re-calls agent so it can advance
+ */
 
 func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 	callCount := 0
@@ -684,11 +684,11 @@ func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: BFA override re-call must NOT leak query to next field
-// Reproduces exact bug: agent rejects razaoSocial after retries,
-// BFA accepts, re-calls agent with same query → agent uses it as nomeFantasia
-// ============================================================
+/*
+ * Test: BFA override re-call must NOT leak query to next field
+ * Reproduces exact bug: agent rejects razaoSocial after retries,
+ * BFA accepts, re-calls agent with same query → agent uses it as nomeFantasia
+ */
 
 func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 	callCount := 0
@@ -772,9 +772,9 @@ func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: sanitizeAnswer strips CAMPO_ACEITO_BFA from answer
-// ============================================================
+/*
+ * Test: sanitizeAnswer strips CAMPO_ACEITO_BFA from answer
+ */
 
 func TestSanitizeAnswer_RemovesCampoAceitoBFA(t *testing.T) {
 	tests := []struct {
@@ -814,9 +814,9 @@ func TestSanitizeAnswer_RemovesCampoAceitoBFA(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: MaxRetries exceeded triggers reset
-// ============================================================
+/*
+ * Test: MaxRetries exceeded triggers reset
+ */
 
 func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
 	callCount := 0
@@ -869,9 +869,9 @@ func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
 	}
 }
 
-// ============================================================
-// Test: Agent sends step=reset → BFA clears session
-// ============================================================
+/*
+ * Test: Agent sends step=reset → BFA clears session
+ */
 
 func TestProcessTurn_AgentResetStep(t *testing.T) {
 	server := mockAgentServer(AgentResponse{

@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Accounts — CRUD via PostgREST
-// ============================================================
+/*
+ * Accounts — CRUD via PostgREST
+ */
 
 func (c *Client) ListAccounts(ctx context.Context, customerID string) ([]domain.Account, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListAccounts")

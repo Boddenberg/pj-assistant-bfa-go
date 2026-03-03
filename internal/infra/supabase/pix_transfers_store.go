@@ -13,9 +13,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// ============================================================
-// PIX Transfers store — create, list, get, update status
-// ============================================================
+/*
+ * PIX Transfers store — create, list, get, update status
+ */
 
 func (c *Client) CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.CreatePixTransfer")

@@ -10,9 +10,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Scheduled Transfers
-// ============================================================
+/*
+ * Scheduled Transfers
+ */
 
 func (s *BankingService) CreateScheduledTransfer(ctx context.Context, customerID string, req *domain.ScheduledTransferRequest) (*domain.ScheduledTransfer, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.CreateScheduledTransfer")

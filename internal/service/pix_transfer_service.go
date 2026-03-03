@@ -13,9 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// PIX Transfer — create, list, get, cancel
-// ============================================================
+/*
+ * PIX Transfer — create, list, get, cancel
+ */
 
 func (s *BankingService) CreatePixTransfer(ctx context.Context, customerID string, req *domain.PixTransferRequest) (*domain.PixTransfer, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.CreatePixTransfer")
@@ -145,9 +145,9 @@ func (s *BankingService) CancelPixTransfer(ctx context.Context, customerID, tran
 	return s.store.UpdatePixTransferStatus(ctx, transferID, "cancelled")
 }
 
-// ============================================================
-// Private helpers — keep CreatePixTransfer readable
-// ============================================================
+/*
+ * Private helpers — keep CreatePixTransfer readable
+ */
 
 func validatePixTransferRequest(req *domain.PixTransferRequest) error {
 	if req.Amount <= 0 {

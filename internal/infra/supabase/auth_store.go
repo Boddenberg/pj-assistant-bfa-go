@@ -13,11 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// AuthStore implementation — auth CRUD via PostgREST
-// ============================================================
+/*
+ * AuthStore implementation — auth CRUD via PostgREST
+ */
 
-// --- Customer lookup ---
+/* Customer lookup */
 
 func (c *Client) GetCustomerByID(ctx context.Context, customerID string) (*domain.CustomerProfile, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.GetCustomerByID")
@@ -123,7 +123,7 @@ func (c *Client) GetCustomerByBankDetails(ctx context.Context, document, agencia
 	return profile, nil
 }
 
-// --- Registration ---
+/* Registration */
 
 func (c *Client) CreateCustomerWithAccount(ctx context.Context, req *domain.RegisterRequest, passwordHash string) (*domain.RegisterResponse, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.CreateCustomerWithAccount")
@@ -253,7 +253,7 @@ func (c *Client) CreateCustomerWithAccount(ctx context.Context, req *domain.Regi
 	}, nil
 }
 
-// --- Credentials ---
+/* Credentials */
 
 func (c *Client) GetCredentials(ctx context.Context, customerID string) (*domain.AuthCredential, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.GetCredentials")
@@ -286,7 +286,7 @@ func (c *Client) UpdateCredentials(ctx context.Context, customerID string, updat
 	return c.doPatch(ctx, path, updates)
 }
 
-// --- Refresh tokens ---
+/* Refresh tokens */
 
 func (c *Client) StoreRefreshToken(ctx context.Context, customerID, tokenHash string, expiresAt time.Time) error {
 	ctx, span := tracer.Start(ctx, "Supabase.StoreRefreshToken")
@@ -343,7 +343,7 @@ func (c *Client) RevokeAllRefreshTokens(ctx context.Context, customerID string) 
 	return c.doPatch(ctx, path, map[string]any{"revoked": true})
 }
 
-// --- Password reset codes ---
+/* Password reset codes */
 
 func (c *Client) StoreResetCode(ctx context.Context, customerID, code string, expiresAt time.Time) error {
 	ctx, span := tracer.Start(ctx, "Supabase.StoreResetCode")
@@ -394,7 +394,7 @@ func (c *Client) MarkResetCodeUsed(ctx context.Context, codeID string) error {
 	return c.doPatch(ctx, path, map[string]any{"used": true})
 }
 
-// --- Profile updates ---
+/* Profile updates */
 
 func (c *Client) UpdateCustomerProfile(ctx context.Context, customerID string, updates map[string]any) (*domain.CustomerProfile, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.UpdateCustomerProfile")

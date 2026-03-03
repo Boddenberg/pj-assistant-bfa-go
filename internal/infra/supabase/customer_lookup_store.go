@@ -9,9 +9,9 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// Customer Lookup store — name + full lookup data (used by PIX)
-// ============================================================
+/*
+ * Customer Lookup store — name + full lookup data (used by PIX)
+ */
 
 func (c *Client) GetCustomerName(ctx context.Context, customerID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.GetCustomerName")

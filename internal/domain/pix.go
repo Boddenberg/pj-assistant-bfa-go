@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// ============================================================
-// PIX Keys
-// ============================================================
+/*
+ * PIX Keys
+ */
 
 // PixKey represents a registered PIX key.
 type PixKey struct {
@@ -17,9 +17,9 @@ type PixKey struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// ============================================================
-// PIX Transfer
-// ============================================================
+/*
+ * PIX Transfer
+ */
 
 // PixTransferRequest is the payload to initiate a PIX transfer.
 type PixTransferRequest struct {
@@ -95,9 +95,9 @@ type PixReceipt struct {
 	CreatedAt         string  `json:"created_at"`
 }
 
-// ============================================================
-// Scheduled Transfers
-// ============================================================
+/*
+ * Scheduled Transfers
+ */
 
 // ScheduledTransferRequest is the payload to create a scheduled transfer.
 type ScheduledTransferRequest struct {
@@ -144,9 +144,9 @@ type ScheduledTransfer struct {
 	CreatedAt           time.Time  `json:"created_at"`
 }
 
-// ============================================================
-// PIX API Response types (matches frontend spec)
-// ============================================================
+/*
+ * PIX API Response types (matches frontend spec)
+ */
 
 // PixRecipient represents the destination of a PIX transfer.
 type PixRecipient struct {

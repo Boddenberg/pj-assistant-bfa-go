@@ -7,9 +7,9 @@ import (
 	"net/http"
 )
 
-// ============================================================
-// Chat Metrics — RPC call to get_chat_metrics()
-// ============================================================
+/*
+ * Chat Metrics — RPC call to get_chat_metrics()
+ */
 
 // ChatMetricsRow é o resultado retornado pela função RPC get_chat_metrics().
 // Agrupado por seções: agent_performance, rag_quality, llm_judge.

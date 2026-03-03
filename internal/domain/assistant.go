@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// ============================================================
-// Agente IA
-// ============================================================
+/*
+ * Agente IA
+ */
 
 // AgentRequest é o payload enviado para o serviço do Agente IA.
 type AgentRequest struct {
@@ -33,9 +33,9 @@ type TokenUsage struct {
 	EstimatedCostUsd float64 `json:"estimatedCostUsd,omitempty"`
 }
 
-// ============================================================
-// API do Assistente — Request/Response (segue o contrato do frontend)
-// ============================================================
+/*
+ * API do Assistente — Request/Response (segue o contrato do frontend)
+ */
 
 // AssistantRequest é o body do POST /v1/assistant/{customerId}.
 type AssistantRequest struct {

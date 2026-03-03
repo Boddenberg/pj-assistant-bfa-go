@@ -9,9 +9,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Onboarding Sessions — CRUD via PostgREST
-// ============================================================
+/*
+ * Onboarding Sessions — CRUD via PostgREST
+ */
 
 // OnboardingRow representa uma linha da tabela onboarding_sessions.
 type OnboardingRow struct {

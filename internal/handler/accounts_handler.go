@@ -9,9 +9,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Accounts Handlers
-// ============================================================
+/*
+ * Accounts Handlers
+ */
 
 func listAccountsHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

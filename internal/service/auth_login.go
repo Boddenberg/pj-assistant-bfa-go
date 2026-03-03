@@ -13,9 +13,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// ============================================================
-// Login — POST /v1/auth/login
-// ============================================================
+/*
+ * Login — POST /v1/auth/login
+ */
 
 func (s *AuthService) Login(ctx context.Context, req *domain.LoginRequest) (*domain.LoginResponse, error) {
 	ctx, span := authTracer.Start(ctx, "AuthService.Login")

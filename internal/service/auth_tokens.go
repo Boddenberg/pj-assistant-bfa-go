@@ -14,9 +14,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Refresh — POST /v1/auth/refresh
-// ============================================================
+/*
+ * Refresh — POST /v1/auth/refresh
+ */
 
 func (s *AuthService) Refresh(ctx context.Context, req *domain.RefreshRequest) (*domain.LoginResponse, error) {
 	ctx, span := authTracer.Start(ctx, "AuthService.Refresh")
@@ -86,9 +86,9 @@ func (s *AuthService) Refresh(ctx context.Context, req *domain.RefreshRequest) (
 	}, nil
 }
 
-// ============================================================
-// Logout — POST /v1/auth/logout
-// ============================================================
+/*
+ * Logout — POST /v1/auth/logout
+ */
 
 func (s *AuthService) Logout(ctx context.Context, customerID string) error {
 	ctx, span := authTracer.Start(ctx, "AuthService.Logout")
@@ -102,9 +102,9 @@ func (s *AuthService) Logout(ctx context.Context, customerID string) error {
 	return nil
 }
 
-// ============================================================
-// ValidateToken — used by middleware
-// ============================================================
+/*
+ * ValidateToken — used by middleware
+ */
 
 // JWTClaims represents the custom claims in access tokens.
 type JWTClaims struct {
@@ -137,9 +137,9 @@ func (s *AuthService) ValidateAccessToken(tokenString string) (*JWTClaims, error
 	return claims, nil
 }
 
-// ============================================================
-// Internal JWT helpers
-// ============================================================
+/*
+ * Internal JWT helpers
+ */
 
 func (s *AuthService) signAccessToken(customerID, cnpj string) (string, error) {
 	now := time.Now()

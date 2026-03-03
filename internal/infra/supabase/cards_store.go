@@ -10,9 +10,9 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// Credit Cards — CRUD via PostgREST
-// ============================================================
+/*
+ * Credit Cards — CRUD via PostgREST
+ */
 
 // cardFilter builds a PostgREST filter string for card queries.
 // When customerID is empty, it filters by card_id only.
@@ -125,7 +125,7 @@ func (c *Client) UpdateCreditCardStatus(ctx context.Context, cardID, status stri
 	return c.doPatch(ctx, fmt.Sprintf("credit_cards?id=eq.%s", cardID), patch)
 }
 
-// --- Credit Card Transactions ---
+/* Credit Card Transactions */
 
 func (c *Client) ListCreditCardTransactions(ctx context.Context, customerID, cardID string, page, pageSize int) ([]domain.CreditCardTransaction, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListCreditCardTransactions")
@@ -146,7 +146,7 @@ func (c *Client) ListCreditCardTransactions(ctx context.Context, customerID, car
 	return rows, nil
 }
 
-// --- Credit Card Invoices ---
+/* Credit Card Invoices */
 
 func (c *Client) ListCreditCardInvoices(ctx context.Context, customerID, cardID string) ([]domain.CreditCardInvoice, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListCreditCardInvoices")
@@ -205,7 +205,7 @@ func (c *Client) GetCreditCardInvoiceByMonth(ctx context.Context, customerID, ca
 	return &rows[0], nil
 }
 
-// --- Credit Card Limit / Used Limit Updates ---
+/* Credit Card Limit / Used Limit Updates */
 
 func (c *Client) UpdateCreditCardLimit(ctx context.Context, customerID string, newLimit float64) error {
 	ctx, span := tracer.Start(ctx, "Supabase.UpdateCreditCardLimit")

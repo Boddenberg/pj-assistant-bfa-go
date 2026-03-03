@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// PIX Transfer — single transfer + credit-card transfer
-// ============================================================
+/*
+ * PIX Transfer — single transfer + credit-card transfer
+ */
 
 const (
 	// PixCreditFeeRate is the fee charged per installment on PIX via credit card (2%).

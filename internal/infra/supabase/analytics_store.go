@@ -10,11 +10,11 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// Analytics — Spending, Budgets, Favorites, Limits, Notifications, Transactions
-// ============================================================
+/*
+ * Analytics — Spending, Budgets, Favorites, Limits, Notifications, Transactions
+ */
 
-// --- Transaction Summary ---
+/* Transaction Summary */
 
 func (c *Client) GetTransactionSummary(ctx context.Context, customerID string) (*domain.TransactionSummary, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.GetTransactionSummary")
@@ -104,7 +104,7 @@ func (c *Client) ListTransactions(ctx context.Context, customerID string, from, 
 	return txns, nil
 }
 
-// --- Spending Analytics ---
+/* Spending Analytics */
 
 func (c *Client) GetSpendingSummary(ctx context.Context, customerID, periodType string) (*domain.SpendingSummary, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.GetSpendingSummary")
@@ -130,7 +130,7 @@ func (c *Client) GetSpendingSummary(ctx context.Context, customerID, periodType 
 	return &rows[0], nil
 }
 
-// --- Budgets ---
+/* Budgets */
 
 func (c *Client) ListBudgets(ctx context.Context, customerID string) ([]domain.SpendingBudget, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListBudgets")
@@ -192,7 +192,7 @@ func (c *Client) UpdateBudget(ctx context.Context, budget *domain.SpendingBudget
 	return budget, nil
 }
 
-// --- Favorites ---
+/* Favorites */
 
 func (c *Client) ListFavorites(ctx context.Context, customerID string) ([]domain.Favorite, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListFavorites")
@@ -252,7 +252,7 @@ func (c *Client) DeleteFavorite(ctx context.Context, customerID, favoriteID stri
 	return c.doDelete(ctx, fmt.Sprintf("favorites?id=eq.%s&customer_id=eq.%s", favoriteID, customerID))
 }
 
-// --- Transaction Limits ---
+/* Transaction Limits */
 
 func (c *Client) ListTransactionLimits(ctx context.Context, customerID string) ([]domain.TransactionLimit, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListTransactionLimits")
@@ -311,7 +311,7 @@ func (c *Client) UpdateTransactionLimit(ctx context.Context, limit *domain.Trans
 	return limit, nil
 }
 
-// --- Notifications ---
+/* Notifications */
 
 func (c *Client) ListNotifications(ctx context.Context, customerID string, unreadOnly bool, page, pageSize int) ([]domain.Notification, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.ListNotifications")

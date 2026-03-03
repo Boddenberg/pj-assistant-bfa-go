@@ -6,9 +6,9 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// PIX Receipts (Comprovantes)
-// ============================================================
+/*
+ * PIX Receipts (Comprovantes)
+ */
 
 func (s *BankingService) GetPixReceipt(ctx context.Context, receiptID string) (*domain.PixReceipt, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.GetPixReceipt")

@@ -1,16 +1,16 @@
 package chat
 
-// ============================================================
-// Modelos — contratos exatos com o Agent Python e o frontend
-// ============================================================
+/*
+ * Modelos — contratos exatos com o Agent Python e o frontend
+ */
 
-// --- Frontend → BFA ---
+/* Frontend → BFA */
 
 type FrontendRequest struct {
 	Query string `json:"query"`
 }
 
-// --- BFA → Frontend ---
+/* BFA → Frontend */
 
 type FrontendResponse struct {
 	Answer      string       `json:"answer"`
@@ -20,7 +20,7 @@ type FrontendResponse struct {
 	AccountData *AccountData `json:"account_data,omitempty"`
 }
 
-// --- BFA → Agent Python ---
+/* BFA → Agent Python */
 
 type AgentRequest struct {
 	CustomerID      string          `json:"customer_id"`
@@ -38,7 +38,7 @@ type CollectedItem struct {
 	Validated bool   `json:"validated"`
 }
 
-// --- Agent Python → BFA ---
+/* Agent Python → BFA */
 
 type AgentResponse struct {
 	CustomerID       string         `json:"customer_id"`
@@ -55,7 +55,7 @@ type AgentResponse struct {
 	Timestamp        string         `json:"timestamp"`
 }
 
-// --- History entry ---
+/* History entry */
 
 type ChatMessage struct {
 	Query     string  `json:"query"`
@@ -64,7 +64,7 @@ type ChatMessage struct {
 	Validated *bool   `json:"validated"`
 }
 
-// --- Session (em memória, por customer_id) ---
+/* Session (em memória, por customer_id) */
 
 type Session struct {
 	CustomerID     string
@@ -127,7 +127,7 @@ func strPtr(s string) *string { return &s }
 // helper para ponteiro de bool
 func boolPtr(b bool) *bool { return &b }
 
-// --- BFA → Agent Python: LLM-as-Judge ---
+/* BFA → Agent Python: LLM-as-Judge */
 
 // EvaluateRequest é enviado ao agente para avaliação via LLM-as-Judge.
 // Contém a transcrição completa da conversa do cliente.
@@ -148,7 +148,7 @@ type TranscriptEntry struct {
 	CreatedAt  string   `json:"created_at"`
 }
 
-// --- Agent Python → BFA: resposta do LLM-as-Judge ---
+/* Agent Python → BFA: resposta do LLM-as-Judge */
 
 // EvaluateResponse é a resposta do agente após avaliar a conversa via LLM-as-Judge.
 type EvaluateResponse struct {

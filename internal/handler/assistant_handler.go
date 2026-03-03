@@ -16,9 +16,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// 1. Assistente IA — POST /v1/assistant/{customerId}
-// ============================================================
+/*
+ * 1. Assistente IA — POST /v1/assistant/{customerId}
+ */
 
 func assistantHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -76,9 +76,9 @@ func assistantHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFu
 	}
 }
 
-// ============================================================
-// 1-GET. Assistente IA — GET /v1/assistant/{customerId}
-// ============================================================
+/*
+ * 1-GET. Assistente IA — GET /v1/assistant/{customerId}
+ */
 //
 // Rota exigida pelo case do Itaú:
 //
@@ -203,9 +203,9 @@ func chatHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFunc {
 	}
 }
 
-// ============================================================
-// 2. Cliente — GET /v1/customers/{customerId}/profile
-// ============================================================
+/*
+ * 2. Cliente — GET /v1/customers/{customerId}/profile
+ */
 
 func getProfileHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -222,9 +222,9 @@ func getProfileHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerF
 	}
 }
 
-// ============================================================
-// 3. Transações
-// ============================================================
+/*
+ * 3. Transações
+ */
 
 func getTransactionsHandler(svc *service.Assistant, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

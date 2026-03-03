@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// --- Mocks ---
+/* Mocks */
 
 type mockProfileClient struct {
 	profile *domain.CustomerProfile
@@ -43,7 +43,7 @@ func (m *mockAgentClient) Call(_ context.Context, _ *domain.AgentRequest) (*doma
 	return m.response, m.err
 }
 
-// --- Tests ---
+/* Tests */
 
 func TestGetAssistantResponse_Success(t *testing.T) {
 	profile := &domain.CustomerProfile{

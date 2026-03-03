@@ -10,9 +10,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Dev Tools Handlers
-// ============================================================
+/*
+ * Dev Tools Handlers
+ */
 
 func devAddBalanceHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

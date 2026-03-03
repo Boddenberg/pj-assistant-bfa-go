@@ -1,8 +1,8 @@
 package domain
 
-// ============================================================
-// Health & Metrics API Responses
-// ============================================================
+/*
+ * Health & Metrics API Responses
+ */
 
 // HealthStatus is returned by GET /healthz.
 type HealthStatus struct {
@@ -34,9 +34,9 @@ type AgentMetrics struct {
 	Period              string  `json:"period"`
 }
 
-// ============================================================
-// Generic API Response wrappers
-// ============================================================
+/*
+ * Generic API Response wrappers
+ */
 
 // ListResponse wraps paginated list results.
 type ListResponse[T any] struct {

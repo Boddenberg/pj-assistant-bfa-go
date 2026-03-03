@@ -13,9 +13,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Shared helper functions
-// ============================================================
+/*
+ * Shared helper functions
+ */
 
 type errorResponse struct {
 	Error string `json:"error"`

@@ -8,10 +8,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// ChatMetrics — métricas agregadas do chat para o frontend
-// Agrupadas por contexto (seções) — o frontend só exibe.
-// ============================================================
+/*
+ * ChatMetrics — métricas agregadas do chat para o frontend
+ * Agrupadas por contexto (seções) — o frontend só exibe.
+ */
 
 // ChatMetricsResponse é o JSON retornado por GET /v1/chat/metrics.
 // Agrupado em 3 seções: agent_performance, rag_quality, llm_judge.
@@ -79,7 +79,7 @@ type MetricsRepository interface {
 	GetChatMetrics(ctx context.Context) (*ChatMetricsResponse, error)
 }
 
-// --- Supabase implementation ---
+/* Supabase implementation */
 
 type SupabaseMetricsRepository struct {
 	sb     *supabase.Client
@@ -158,7 +158,7 @@ func (r *SupabaseMetricsRepository) GetChatMetrics(ctx context.Context) (*ChatMe
 	}, nil
 }
 
-// --- In-memory stub (para testes) ---
+/* In-memory stub (para testes) */
 
 type InMemoryMetricsRepository struct {
 	logger *zap.Logger

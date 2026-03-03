@@ -9,9 +9,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Spending Analytics
-// ============================================================
+/*
+ * Spending Analytics
+ */
 
 func (s *BankingService) GetSpendingSummary(ctx context.Context, customerID, periodType string) (*domain.SpendingSummary, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.GetSpendingSummary")
@@ -66,9 +66,9 @@ func (s *BankingService) UpdateBudget(ctx context.Context, budget *domain.Spendi
 	return s.store.UpdateBudget(ctx, budget)
 }
 
-// ============================================================
-// Favorites
-// ============================================================
+/*
+ * Favorites
+ */
 
 func (s *BankingService) ListFavorites(ctx context.Context, customerID string) ([]domain.Favorite, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.ListFavorites")
@@ -98,9 +98,9 @@ func (s *BankingService) DeleteFavorite(ctx context.Context, customerID, favorit
 	return s.store.DeleteFavorite(ctx, customerID, favoriteID)
 }
 
-// ============================================================
-// Transaction Limits
-// ============================================================
+/*
+ * Transaction Limits
+ */
 
 func (s *BankingService) ListLimits(ctx context.Context, customerID string) ([]domain.TransactionLimit, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.ListLimits")
@@ -116,9 +116,9 @@ func (s *BankingService) UpdateLimit(ctx context.Context, limit *domain.Transact
 	return s.store.UpdateTransactionLimit(ctx, limit)
 }
 
-// ============================================================
-// Notifications
-// ============================================================
+/*
+ * Notifications
+ */
 
 func (s *BankingService) ListNotifications(ctx context.Context, customerID string, unreadOnly bool, page, pageSize int) ([]domain.Notification, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.ListNotifications")
@@ -134,9 +134,9 @@ func (s *BankingService) MarkNotificationRead(ctx context.Context, notifID strin
 	return s.store.MarkNotificationRead(ctx, notifID)
 }
 
-// ============================================================
-// Financial Summary (aggregated view for the frontend spec)
-// ============================================================
+/*
+ * Financial Summary (aggregated view for the frontend spec)
+ */
 
 func (s *BankingService) GetFinancialSummary(ctx context.Context, customerID, period string) (*domain.FinancialSummary, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.GetFinancialSummary")

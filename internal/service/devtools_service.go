@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// Dev Tools
-// ============================================================
+/*
+ * Dev Tools
+ */
 
 // DevAddBalance adds the given amount to the customer's primary account balance.
 func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBalanceRequest) (*domain.DevAddBalanceResponse, error) {

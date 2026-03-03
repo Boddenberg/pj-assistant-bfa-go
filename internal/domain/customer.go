@@ -2,9 +2,9 @@ package domain
 
 import "time"
 
-// ============================================================
-// Customer / Profile
-// ============================================================
+/*
+ * Customer / Profile
+ */
 
 // CustomerProfile represents a PJ customer's profile data.
 type CustomerProfile struct {
@@ -25,9 +25,9 @@ type CustomerProfile struct {
 	RepresentanteBirthDate string  `json:"representante_birth_date,omitempty"`
 }
 
-// ============================================================
-// Auth / Users
-// ============================================================
+/*
+ * Auth / Users
+ */
 
 // User represents an authenticated user (linked to Supabase Auth).
 type User struct {

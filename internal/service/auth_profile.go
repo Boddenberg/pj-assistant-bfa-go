@@ -7,9 +7,9 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// UpdateProfile — PUT /v1/customers/{id}/profile
-// ============================================================
+/*
+ * UpdateProfile — PUT /v1/customers/{id}/profile
+ */
 
 func (s *AuthService) UpdateProfile(ctx context.Context, customerID string, req *domain.UpdateProfileRequest) (*domain.UpdateProfileResponse, error) {
 	ctx, span := authTracer.Start(ctx, "AuthService.UpdateProfile")
@@ -47,9 +47,9 @@ func (s *AuthService) UpdateProfile(ctx context.Context, customerID string, req 
 	}, nil
 }
 
-// ============================================================
-// UpdateRepresentative — PUT /v1/customers/{id}/representative
-// ============================================================
+/*
+ * UpdateRepresentative — PUT /v1/customers/{id}/representative
+ */
 
 func (s *AuthService) UpdateRepresentative(ctx context.Context, customerID string, req *domain.UpdateRepresentativeRequest) (*domain.UpdateRepresentativeResponse, error) {
 	ctx, span := authTracer.Start(ctx, "AuthService.UpdateRepresentative")

@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// 8. Análise Financeira
-// ============================================================
+/*
+ * 8. Análise Financeira
+ */
 
 func financialSummaryHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -35,9 +35,9 @@ func financialSummaryHandler(bankSvc *service.BankingService, logger *zap.Logger
 	}
 }
 
-// ============================================================
-// Favorites
-// ============================================================
+/*
+ * Favorites
+ */
 
 func listFavoritesHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -87,9 +87,9 @@ func deleteFavoriteHandler(svc *service.BankingService, logger *zap.Logger) http
 	}
 }
 
-// ============================================================
-// Transaction Limits
-// ============================================================
+/*
+ * Transaction Limits
+ */
 
 func listLimitsHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -127,9 +127,9 @@ func updateLimitHandler(svc *service.BankingService, logger *zap.Logger) http.Ha
 	}
 }
 
-// ============================================================
-// Notifications
-// ============================================================
+/*
+ * Notifications
+ */
 
 func listNotificationsHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -160,9 +160,9 @@ func markNotificationReadHandler(svc *service.BankingService, logger *zap.Logger
 	}
 }
 
-// ============================================================
-// Budgets
-// ============================================================
+/*
+ * Budgets
+ */
 
 func listBudgetsHandler(svc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -25,13 +25,13 @@ import (
 )
 
 func main() {
-	// --- Load .env file (for local development) ---
+	/* Load .env file (for local development) */
 	_ = config.LoadDotEnv(".env")
 
-	// --- Config ---
+	/* Config */
 	cfg := config.Load()
 
-	// --- Logger ---
+	/* Logger */
 	logger := observability.NewLogger(cfg.LogLevel, cfg.AxiomToken, cfg.AxiomDataset)
 	defer logger.Sync()
 
@@ -47,20 +47,20 @@ func main() {
 		zap.Duration("jwt_refresh_ttl", cfg.JWTRefreshTTL),
 	)
 
-	// --- Tracing ---
+	/* Tracing */
 	shutdown, err := observability.InitTracer(cfg.OTLPEndpoint, "pj-assistant-bfa")
 	if err != nil {
 		logger.Fatal("failed to init tracer", zap.Error(err))
 	}
 	defer shutdown(context.Background())
 
-	// --- Metrics ---
+	/* Metrics */
 	metrics := observability.NewMetrics()
 
-	// --- Cache ---
+	/* Cache */
 	profileCache := cache.New[any](cfg.CacheTTL)
 
-	// --- Resilience ---
+	/* Resilience */
 	resilienceCfg := resilience.Config{
 		MaxRetries:     cfg.MaxRetries,
 		InitialBackoff: cfg.InitialBackoff,
@@ -68,7 +68,7 @@ func main() {
 	}
 	cb := resilience.NewCircuitBreaker("external-apis")
 
-	// --- Clients ---
+	/* Clients */
 	httpClient := &http.Client{Timeout: cfg.HTTPTimeout}
 
 	var profileClient mainport.ProfileFetcher
@@ -98,7 +98,7 @@ func main() {
 
 	agentClient := client.NewAgentClient(httpClient, cfg.AgentAPIURL, cb, resilienceCfg)
 
-	// --- Services ---
+	/* Services */
 	assistantSvc := service.NewAssistant(
 		profileClient,
 		transactionsClient,
@@ -125,7 +125,7 @@ func main() {
 		logger.Warn("auth service: Supabase not configured, auth routes unavailable")
 	}
 
-	// --- Chat (onboarding orquestrado pelo BFA) ---
+	/* Chat (onboarding orquestrado pelo BFA) */
 	chatClient := chat.NewClient(cfg.ChatAgentURL, 30*time.Second, cfg.ChatMaxRetries, cfg.ChatRetryDelay, logger)
 	chatSessions := chat.NewSessionStore()
 	var chatRepo chat.AccountRepository
@@ -148,10 +148,10 @@ func main() {
 	chatSvc := chat.NewService(chatClient, chatSessions, chatRepo, chatTranscripts, chatEvaluations, logger)
 	logger.Info("chat service enabled", zap.String("agent_url", cfg.ChatAgentURL))
 
-	// --- Router ---
+	/* Router */
 	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatSvc, chatMetrics, metrics, logger)
 
-	// --- Server ---
+	/* Server */
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      router,
@@ -160,7 +160,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// --- Start listener (validates port before serving) ---
+	/* Start listener (validates port before serving) */
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
 		logger.Fatal("failed to bind port", zap.Int("port", cfg.Port), zap.Error(err))
@@ -170,7 +170,7 @@ func main() {
 		zap.String("addr", fmt.Sprintf("http://localhost:%d", cfg.Port)),
 	)
 
-	// --- Graceful shutdown ---
+	/* Graceful shutdown */
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("server failed", zap.Error(err))

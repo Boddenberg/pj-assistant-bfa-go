@@ -10,9 +10,9 @@ import (
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 )
 
-// ============================================================
-// Scheduled Transfers store — create, list, get, update status
-// ============================================================
+/*
+ * Scheduled Transfers store — create, list, get, update status
+ */
 
 func (c *Client) CreateScheduledTransfer(ctx context.Context, customerID string, req *domain.ScheduledTransferRequest) (*domain.ScheduledTransfer, error) {
 	ctx, span := tracer.Start(ctx, "Supabase.CreateScheduledTransfer")

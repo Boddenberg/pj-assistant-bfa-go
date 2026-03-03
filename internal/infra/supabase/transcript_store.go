@@ -7,9 +7,9 @@ import (
 	"net/http"
 )
 
-// ============================================================
-// LLM Transcripts — insert + list via PostgREST
-// ============================================================
+/*
+ * LLM Transcripts — insert + list via PostgREST
+ */
 
 // TranscriptRow representa uma linha da tabela llm_transcripts.
 type TranscriptRow struct {

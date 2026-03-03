@@ -12,9 +12,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// ============================================================
-// PIX Keys — lookup, registration, deletion
-// ============================================================
+/*
+ * PIX Keys — lookup, registration, deletion
+ */
 
 func (s *BankingService) ListPixKeys(ctx context.Context, customerID string) ([]domain.PixKey, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.ListPixKeys")
