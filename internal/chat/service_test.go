@@ -30,7 +30,7 @@ func newTestService(agentURL string) *Service {
 	repo := NewInMemoryAccountRepository(logger)
 	transcripts := NewInMemoryTranscriptRepository(logger)
 	evaluations := NewInMemoryEvaluationRepository(logger)
-	return NewService(client, sessions, repo, transcripts, evaluations, logger)
+	return NewService(client, sessions, repo, transcripts, evaluations, nil, nil, logger)
 }
 
 var ctx = context.Background()

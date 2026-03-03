@@ -2,10 +2,12 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/boddenberg/pj-assistant-bfa-go/internal/port"
 	"go.uber.org/zap"
 )
 
@@ -18,16 +20,18 @@ import (
 //     salva no banco, e faz pass-through da resposta do agente para o frontend.
 //   - O BFA NÃO sabe a jornada, NÃO controla a sequência, NÃO sobrescreve step/next_step.
 type Service struct {
-	client      *Client
-	sessions    *SessionStore
-	validators  ValidatorRegistry
-	repo        AccountRepository
-	transcripts TranscriptRepository
-	evaluations EvaluationRepository
-	logger      *zap.Logger
+	client       *Client
+	sessions     *SessionStore
+	validators   ValidatorRegistry
+	repo         AccountRepository
+	transcripts  TranscriptRepository
+	evaluations  EvaluationRepository
+	ctxFetcher   ContextFetcher   // dados financeiros (pode ser nil)
+	authStore    port.AuthStore   // perfil do cliente (pode ser nil)
+	logger       *zap.Logger
 }
 
-func NewService(client *Client, sessions *SessionStore, repo AccountRepository, transcripts TranscriptRepository, evaluations EvaluationRepository, logger *zap.Logger) *Service {
+func NewService(client *Client, sessions *SessionStore, repo AccountRepository, transcripts TranscriptRepository, evaluations EvaluationRepository, ctxFetcher ContextFetcher, authStore port.AuthStore, logger *zap.Logger) *Service {
 	return &Service{
 		client:      client,
 		sessions:    sessions,
@@ -35,6 +39,8 @@ func NewService(client *Client, sessions *SessionStore, repo AccountRepository, 
 		repo:        repo,
 		transcripts: transcripts,
 		evaluations: evaluations,
+		ctxFetcher:  ctxFetcher,
+		authStore:   authStore,
 		logger:      logger,
 	}
 }
@@ -62,35 +68,42 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string) (*F
 		}
 	}
 
+	// Buscar contexto financeiro para usuários autenticados (não-anônimos)
+	var financialCtx *FinancialContext
+	if customerID != "anonymous" && s.ctxFetcher != nil {
+		financialCtx = BuildFinancialContext(ctx, s.ctxFetcher, s.authStore, customerID, s.logger)
+	}
+
 	// 1. Chamar agente — ele decide o que fazer
 	start := time.Now()
-	agentResp, err := s.callAgent(ctx, customerID, query, session, "")
+	agentResp, err := s.callAgent(ctx, customerID, query, session, "", financialCtx)
 	latencyMs := time.Since(start).Milliseconds()
 	if err != nil {
 		bfaLatencyMs := time.Since(bfaStart).Milliseconds()
 		// Salvar transcrição de erro
-		s.saveTranscriptAsync(customerID, query, &AgentResponse{Answer: err.Error()}, latencyMs, bfaLatencyMs, true)
+		s.saveTranscriptAsync(customerID, query, &AgentResponse{Answer: err.Error()}, latencyMs, bfaLatencyMs, true, financialCtx)
 		return nil, fmt.Errorf("agent call failed: %w", err)
 	}
 
 	// 2. Processar resposta do agente — BFA apenas valida o campo
-	frontResp, procErr := s.processAgentResponse(ctx, customerID, query, session, agentResp)
+	frontResp, procErr := s.processAgentResponse(ctx, customerID, query, session, agentResp, financialCtx)
 
 	// Salvar transcrição de forma assíncrona (LLM-as-Judge) — mede latência total do BFA
 	bfaLatencyMs := time.Since(bfaStart).Milliseconds()
-	s.saveTranscriptAsync(customerID, query, agentResp, latencyMs, bfaLatencyMs, false)
+	s.saveTranscriptAsync(customerID, query, agentResp, latencyMs, bfaLatencyMs, false, financialCtx)
 
 	return frontResp, procErr
 }
 
 // callAgent monta o AgentRequest e chama o Agent Python.
-func (s *Service) callAgent(ctx context.Context, customerID, query string, session *Session, validationError string) (*AgentResponse, error) {
+func (s *Service) callAgent(ctx context.Context, customerID, query string, session *Session, validationError string, financialCtx *FinancialContext) (*AgentResponse, error) {
 	req := AgentRequest{
-		CustomerID:      customerID,
-		Query:           query,
-		History:         session.History,
-		ValidationError: validationError,
-		CollectedData:   session.CollectedData(),
+		CustomerID:       customerID,
+		Query:            query,
+		History:          session.History,
+		ValidationError:  validationError,
+		CollectedData:    session.CollectedData(),
+		FinancialContext: financialCtx,
 	}
 
 	return s.client.Send(ctx, req)
@@ -103,7 +116,7 @@ func (s *Service) callAgent(ctx context.Context, customerID, query string, sessi
 // - Se step != next_step → agente aceitou, BFA valida e salva.
 // - Se step vazio / welcome → pass-through.
 // - O BFA NUNCA sobrescreve step/next_step — o agente controla a jornada.
-func (s *Service) processAgentResponse(ctx context.Context, customerID, query string, session *Session, resp *AgentResponse) (*FrontendResponse, error) {
+func (s *Service) processAgentResponse(ctx context.Context, customerID, query string, session *Session, resp *AgentResponse, financialCtx *FinancialContext) (*FrontendResponse, error) {
 	step := derefStr(resp.Step)
 	nextStep := derefStr(resp.NextStep)
 
@@ -188,7 +201,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 				// 2. Saiba que o BFA já aceitou e salvou o campo
 				// 3. Avance para o próximo campo sem re-validar
 				retryResp, retryErr := s.callAgent(ctx, customerID, query, session,
-					"CAMPO_ACEITO_BFA: o campo '"+step+"' foi validado e salvo pelo BFA. Avance para o próximo campo.")
+					"CAMPO_ACEITO_BFA: o campo '"+step+"' foi validado e salvo pelo BFA. Avance para o próximo campo.", nil)
 				if retryErr != nil {
 					return nil, fmt.Errorf("agent retry after BFA override: %w", retryErr)
 				}
@@ -227,7 +240,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 				}, nil
 			}
 
-			errorResp, retryErr := s.callAgent(ctx, customerID, query, session, validationErr.Error())
+			errorResp, retryErr := s.callAgent(ctx, customerID, query, session, validationErr.Error(), nil)
 			if retryErr != nil {
 				return nil, fmt.Errorf("agent error-format call failed: %w", retryErr)
 			}
@@ -291,7 +304,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		}
 
 		// Reenviar ao agente com validation_error para que reformate
-		errorResp, retryErr := s.callAgent(ctx, customerID, query, session, err.Error())
+		errorResp, retryErr := s.callAgent(ctx, customerID, query, session, err.Error(), nil)
 		if retryErr != nil {
 			return nil, fmt.Errorf("agent retry call failed: %w", retryErr)
 		}
@@ -340,7 +353,7 @@ func (s *Service) checkCompletion(ctx context.Context, customerID, query string,
 		validationMsg := fmt.Sprintf("Não é possível finalizar. Campos faltando: %s",
 			strings.Join(missing, ", "))
 
-		retryResp, retryErr := s.callAgent(ctx, customerID, query, session, validationMsg)
+		retryResp, retryErr := s.callAgent(ctx, customerID, query, session, validationMsg, nil)
 		if retryErr != nil {
 			return nil, fmt.Errorf("agent retry missing fields: %w", retryErr)
 		}
@@ -425,7 +438,7 @@ func sanitizeAnswer(answer string) string {
 
 // saveTranscriptAsync salva a transcrição do turno de forma assíncrona.
 // Fire-and-forget — erros são apenas logados, nunca bloqueiam o chat.
-func (s *Service) saveTranscriptAsync(customerID, query string, resp *AgentResponse, latencyMs int64, bfaLatencyMs int64, errOccurred bool) {
+func (s *Service) saveTranscriptAsync(customerID, query string, resp *AgentResponse, latencyMs int64, bfaLatencyMs int64, errOccurred bool, financialCtx *FinancialContext) {
 	ragCtx := resp.RagContexts
 	if ragCtx == nil {
 		ragCtx = []string{}
@@ -446,6 +459,14 @@ func (s *Service) saveTranscriptAsync(customerID, query string, resp *AgentRespo
 		BfaLatencyMs:  bfaLatencyMs,
 		ErrorOccurred: errOccurred,
 		TokensUsed:    tokensUsed,
+	}
+
+	// Serializar contexto financeiro para persistência
+	if financialCtx != nil {
+		t.FinancialContextKeys = financialCtx.ContextKeys
+		if raw, err := json.Marshal(financialCtx); err == nil {
+			t.FinancialContextRaw = string(raw)
+		}
 	}
 
 	go func() {
@@ -490,14 +511,15 @@ func (s *Service) evaluateAsync(customerID string) {
 		conversation := make([]TranscriptEntry, len(transcripts))
 		for i, t := range transcripts {
 			conversation[i] = TranscriptEntry{
-				Query:      t.Query,
-				Answer:     t.Answer,
-				Contexts:   t.RagContexts,
-				Step:       t.Step,
-				Intent:     t.Intent,
-				Confidence: t.Confidence,
-				LatencyMs:  t.LatencyMs,
-				CreatedAt:  t.CreatedAt,
+				Query:                t.Query,
+				Answer:               t.Answer,
+				Contexts:             t.RagContexts,
+				Step:                 t.Step,
+				Intent:               t.Intent,
+				Confidence:           t.Confidence,
+				LatencyMs:            t.LatencyMs,
+				CreatedAt:            t.CreatedAt,
+				FinancialContextKeys: t.FinancialContextKeys,
 			}
 		}
 

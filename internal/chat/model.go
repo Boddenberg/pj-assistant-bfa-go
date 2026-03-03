@@ -23,11 +23,141 @@ type FrontendResponse struct {
 /* BFA → Agent Python */
 
 type AgentRequest struct {
-	CustomerID      string          `json:"customer_id"`
-	Query           string          `json:"query"`
-	History         []ChatMessage   `json:"history"`
-	ValidationError string          `json:"validation_error"`
-	CollectedData   []CollectedItem `json:"collected_data"`
+	CustomerID       string            `json:"customer_id"`
+	Query            string            `json:"query"`
+	History          []ChatMessage     `json:"history"`
+	ValidationError  string            `json:"validation_error"`
+	CollectedData    []CollectedItem   `json:"collected_data"`
+	FinancialContext *FinancialContext `json:"financial_context,omitempty"`
+}
+
+/*
+ * FinancialContext — dados financeiros do cliente enviados ao Agent Python.
+ * O BFA monta este bloco antes de chamar o agente, para que ele possa
+ * responder perguntas sobre saldo, cartões, PIX, faturas, etc.
+ *
+ * Cada sub-struct é preenchida por um "context provider" independente.
+ * Se o provider falhar, o campo fica nil — o agente opera com dados parciais.
+ */
+
+// FinancialContext agrupa todos os contextos financeiros do cliente.
+type FinancialContext struct {
+	Account    *AccountContext    `json:"account,omitempty"`
+	Cards      *CardsContext      `json:"cards,omitempty"`
+	Pix        *PixContext        `json:"pix,omitempty"`
+	Billing    *BillingContext    `json:"billing,omitempty"`
+	Profile    *ProfileContext    `json:"profile,omitempty"`
+	FetchedAt  string             `json:"fetched_at"`            // RFC3339
+	ContextKeys []string          `json:"context_keys"`          // quais sub-contextos foram preenchidos
+}
+
+// AccountContext — saldo, limites e dados da conta corrente.
+type AccountContext struct {
+	AccountID            string  `json:"account_id"`
+	Branch               string  `json:"branch"`
+	AccountNumber        string  `json:"account_number"`
+	Balance              float64 `json:"balance"`
+	AvailableBalance     float64 `json:"available_balance"`
+	OverdraftLimit       float64 `json:"overdraft_limit"`
+	CreditLimit          float64 `json:"credit_limit"`
+	AvailableCreditLimit float64 `json:"available_credit_limit"`
+	Status               string  `json:"status"`
+}
+
+// CardsContext — cartões de crédito do cliente + faturas abertas.
+type CardsContext struct {
+	Cards    []CardSummary    `json:"cards"`
+	Invoices []InvoiceSummary `json:"invoices,omitempty"`
+}
+
+// CardSummary — resumo de um cartão de crédito.
+type CardSummary struct {
+	CardID         string  `json:"card_id"`
+	Last4          string  `json:"last4"`
+	Brand          string  `json:"brand"`
+	CardType       string  `json:"card_type"`
+	Status         string  `json:"status"`
+	CreditLimit    float64 `json:"credit_limit"`
+	AvailableLimit float64 `json:"available_limit"`
+	UsedLimit      float64 `json:"used_limit"`
+	DueDay         int     `json:"due_day"`
+	BillingDay     int     `json:"billing_day"`
+}
+
+// InvoiceSummary — resumo de uma fatura de cartão.
+type InvoiceSummary struct {
+	CardID         string  `json:"card_id"`
+	ReferenceMonth string  `json:"reference_month"`
+	TotalAmount    float64 `json:"total_amount"`
+	MinimumPayment float64 `json:"minimum_payment"`
+	DueDate        string  `json:"due_date"`
+	Status         string  `json:"status"`
+}
+
+// PixContext — chaves PIX e transferências recentes.
+type PixContext struct {
+	Keys              []PixKeySummary      `json:"keys"`
+	RecentTransfers   []PixTransferSummary `json:"recent_transfers,omitempty"`
+	ScheduledTransfers []ScheduledSummary  `json:"scheduled_transfers,omitempty"`
+}
+
+// PixKeySummary — resumo de uma chave PIX.
+type PixKeySummary struct {
+	KeyType  string `json:"key_type"`
+	KeyValue string `json:"key_value"`
+	Status   string `json:"status"`
+}
+
+// PixTransferSummary — resumo de uma transferência PIX.
+type PixTransferSummary struct {
+	TransferID      string  `json:"transfer_id"`
+	Amount          float64 `json:"amount"`
+	DestinationName string  `json:"destination_name"`
+	Status          string  `json:"status"`
+	FundedBy        string  `json:"funded_by"`
+	CreatedAt       string  `json:"created_at"`
+}
+
+// ScheduledSummary — resumo de uma transferência agendada.
+type ScheduledSummary struct {
+	TransferID      string  `json:"transfer_id"`
+	Amount          float64 `json:"amount"`
+	DestinationName string  `json:"destination_name,omitempty"`
+	ScheduledFor    string  `json:"scheduled_for"`
+	Status          string  `json:"status"`
+}
+
+// BillingContext — boletos e compras no débito recentes.
+type BillingContext struct {
+	RecentBills     []BillSummary  `json:"recent_bills,omitempty"`
+	RecentDebits    []DebitSummary `json:"recent_debits,omitempty"`
+}
+
+// BillSummary — resumo de um pagamento de boleto.
+type BillSummary struct {
+	BillID      string  `json:"bill_id"`
+	Amount      float64 `json:"amount"`
+	Beneficiary string  `json:"beneficiary"`
+	DueDate     string  `json:"due_date"`
+	Status      string  `json:"status"`
+}
+
+// DebitSummary — resumo de uma compra no débito.
+type DebitSummary struct {
+	Amount       float64 `json:"amount"`
+	MerchantName string  `json:"merchant_name"`
+	Category     string  `json:"category"`
+	Date         string  `json:"date"`
+	Status       string  `json:"status"`
+}
+
+// ProfileContext — dados cadastrais do cliente PJ.
+type ProfileContext struct {
+	CustomerID  string `json:"customer_id"`
+	CompanyName string `json:"company_name"`
+	Document    string `json:"document"` // CNPJ
+	Segment     string `json:"segment"`
+	Email       string `json:"email,omitempty"`
 }
 
 // CollectedItem representa um dado já validado pelo BFA.
@@ -138,14 +268,15 @@ type EvaluateRequest struct {
 
 // TranscriptEntry é um turno individual da conversa (query + answer + metadados).
 type TranscriptEntry struct {
-	Query      string   `json:"query"`
-	Answer     string   `json:"answer"`
-	Contexts   []string `json:"contexts"`
-	Step       string   `json:"step,omitempty"`
-	Intent     string   `json:"intent,omitempty"`
-	Confidence float64  `json:"confidence,omitempty"`
-	LatencyMs  int64    `json:"latency_ms,omitempty"`
-	CreatedAt  string   `json:"created_at"`
+	Query               string   `json:"query"`
+	Answer              string   `json:"answer"`
+	Contexts            []string `json:"contexts"`
+	Step                string   `json:"step,omitempty"`
+	Intent              string   `json:"intent,omitempty"`
+	Confidence          float64  `json:"confidence,omitempty"`
+	LatencyMs           int64    `json:"latency_ms,omitempty"`
+	CreatedAt           string   `json:"created_at"`
+	FinancialContextKeys []string `json:"financial_context_keys,omitempty"` // quais contextos foram enviados
 }
 
 /* Agent Python → BFA: resposta do LLM-as-Judge */

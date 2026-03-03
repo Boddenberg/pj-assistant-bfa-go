@@ -14,19 +14,21 @@ import (
 
 // Transcript representa um turno completo da conversa para avaliação.
 type Transcript struct {
-	CustomerID    string   `json:"customer_id"`
-	Query         string   `json:"query"`
-	Answer        string   `json:"answer"`
-	RagContexts   []string `json:"rag_contexts,omitempty"`
-	Step          string   `json:"step,omitempty"`
-	Intent        string   `json:"intent,omitempty"`
-	Confidence    float64  `json:"confidence,omitempty"`
-	Model         string   `json:"model,omitempty"`
-	LatencyMs     int64    `json:"latency_ms,omitempty"`
-	ErrorOccurred bool     `json:"error_occurred"`
-	TokensUsed    int      `json:"tokens_used,omitempty"`
-	BfaLatencyMs  int64    `json:"bfa_latency_ms,omitempty"`
-	CreatedAt     string   `json:"created_at,omitempty"`
+	CustomerID           string   `json:"customer_id"`
+	Query                string   `json:"query"`
+	Answer               string   `json:"answer"`
+	RagContexts          []string `json:"rag_contexts,omitempty"`
+	Step                 string   `json:"step,omitempty"`
+	Intent               string   `json:"intent,omitempty"`
+	Confidence           float64  `json:"confidence,omitempty"`
+	Model                string   `json:"model,omitempty"`
+	LatencyMs            int64    `json:"latency_ms,omitempty"`
+	ErrorOccurred        bool     `json:"error_occurred"`
+	TokensUsed           int      `json:"tokens_used,omitempty"`
+	BfaLatencyMs         int64    `json:"bfa_latency_ms,omitempty"`
+	CreatedAt            string   `json:"created_at,omitempty"`
+	FinancialContextKeys []string `json:"financial_context_keys,omitempty"` // quais sub-contextos foram enviados
+	FinancialContextRaw  string   `json:"financial_context_raw,omitempty"`  // JSON serializado do FinancialContext
 }
 
 // TranscriptRepository persiste transcrições para avaliação posterior.
@@ -79,6 +81,12 @@ func (r *SupabaseTranscriptRepository) SaveTranscript(ctx context.Context, t Tra
 	if t.BfaLatencyMs > 0 {
 		row["bfa_latency_ms"] = t.BfaLatencyMs
 	}
+	if len(t.FinancialContextKeys) > 0 {
+		row["financial_context_keys"] = t.FinancialContextKeys
+	}
+	if t.FinancialContextRaw != "" {
+		row["financial_context_raw"] = t.FinancialContextRaw
+	}
 
 	return r.sb.InsertTranscript(ctx, row)
 }
@@ -92,18 +100,20 @@ func (r *SupabaseTranscriptRepository) ListTranscripts(ctx context.Context, cust
 	transcripts := make([]Transcript, len(rows))
 	for i, row := range rows {
 		transcripts[i] = Transcript{
-			CustomerID:    row.CustomerID,
-			Query:         row.Query,
-			Answer:        row.Answer,
-			RagContexts:   row.RagContexts,
-			Step:          row.Step,
-			Intent:        row.Intent,
-			Confidence:    row.Confidence,
-			Model:         row.Model,
-			LatencyMs:     row.LatencyMs,
-			ErrorOccurred: row.ErrorOccurred,
-			TokensUsed:    row.TokensUsed,
-			CreatedAt:     row.CreatedAt,
+			CustomerID:           row.CustomerID,
+			Query:                row.Query,
+			Answer:               row.Answer,
+			RagContexts:          row.RagContexts,
+			Step:                 row.Step,
+			Intent:               row.Intent,
+			Confidence:           row.Confidence,
+			Model:                row.Model,
+			LatencyMs:            row.LatencyMs,
+			ErrorOccurred:        row.ErrorOccurred,
+			TokensUsed:           row.TokensUsed,
+			CreatedAt:            row.CreatedAt,
+			FinancialContextKeys: row.FinancialContextKeys,
+			FinancialContextRaw:  row.FinancialContextRaw,
 		}
 	}
 	return transcripts, nil

@@ -132,11 +132,15 @@ func main() {
 	var chatTranscripts chat.TranscriptRepository
 	var chatEvaluations chat.EvaluationRepository
 	var chatMetrics chat.MetricsRepository
+	var chatCtxFetcher chat.ContextFetcher
+	var chatAuthStore mainport.AuthStore
 	if supabaseClient != nil {
 		chatRepo = chat.NewSupabaseAccountRepository(supabaseClient, logger)
 		chatTranscripts = chat.NewSupabaseTranscriptRepository(supabaseClient, logger)
 		chatEvaluations = chat.NewSupabaseEvaluationRepository(supabaseClient, logger)
 		chatMetrics = chat.NewSupabaseMetricsRepository(supabaseClient, logger)
+		chatCtxFetcher = supabaseClient
+		chatAuthStore = supabaseClient
 		logger.Info("chat using Supabase repository")
 	} else {
 		chatRepo = chat.NewInMemoryAccountRepository(logger)
@@ -145,7 +149,7 @@ func main() {
 		chatMetrics = chat.NewInMemoryMetricsRepository(logger)
 		logger.Warn("chat using in-memory repository (Supabase not configured)")
 	}
-	chatSvc := chat.NewService(chatClient, chatSessions, chatRepo, chatTranscripts, chatEvaluations, logger)
+	chatSvc := chat.NewService(chatClient, chatSessions, chatRepo, chatTranscripts, chatEvaluations, chatCtxFetcher, chatAuthStore, logger)
 	logger.Info("chat service enabled", zap.String("agent_url", cfg.ChatAgentURL))
 
 	/* Router */

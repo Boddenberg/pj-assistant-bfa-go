@@ -13,19 +13,21 @@ import (
 
 // TranscriptRow representa uma linha da tabela llm_transcripts.
 type TranscriptRow struct {
-	ID            string   `json:"id"`
-	CustomerID    string   `json:"customer_id"`
-	Query         string   `json:"query"`
-	Answer        string   `json:"answer"`
-	RagContexts   []string `json:"rag_contexts"`
-	Step          string   `json:"step"`
-	Intent        string   `json:"intent"`
-	Confidence    float64  `json:"confidence"`
-	Model         string   `json:"model"`
-	LatencyMs     int64    `json:"latency_ms"`
-	ErrorOccurred bool     `json:"error_occurred"`
-	TokensUsed    int      `json:"tokens_used"`
-	CreatedAt     string   `json:"created_at"`
+	ID                   string   `json:"id"`
+	CustomerID           string   `json:"customer_id"`
+	Query                string   `json:"query"`
+	Answer               string   `json:"answer"`
+	RagContexts          []string `json:"rag_contexts"`
+	Step                 string   `json:"step"`
+	Intent               string   `json:"intent"`
+	Confidence           float64  `json:"confidence"`
+	Model                string   `json:"model"`
+	LatencyMs            int64    `json:"latency_ms"`
+	ErrorOccurred        bool     `json:"error_occurred"`
+	TokensUsed           int      `json:"tokens_used"`
+	CreatedAt            string   `json:"created_at"`
+	FinancialContextKeys []string `json:"financial_context_keys"`
+	FinancialContextRaw  string   `json:"financial_context_raw"`
 }
 
 // InsertTranscript insere um registro na tabela llm_transcripts.
