@@ -1,4 +1,4 @@
-package chatv2
+package chat
 
 // ============================================================
 // Modelos — contratos exatos com o Agent Python e o frontend

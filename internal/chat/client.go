@@ -1,4 +1,4 @@
-package chatv2
+package chat
 
 import (
 	"bytes"

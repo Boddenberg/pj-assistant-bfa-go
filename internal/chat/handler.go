@@ -1,4 +1,4 @@
-package chatv2
+package chat
 
 import (
 	"encoding/json"
@@ -8,12 +8,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// Handler retorna um http.HandlerFunc para POST /v2/chat e POST /v2/chat/{customerID}.
+// Handler retorna um http.HandlerFunc para POST /v1/chat e POST /v1/chat/{customerID}.
 func Handler(svc *Service, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req FrontendRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			logger.Warn("chatv2: invalid request body", zap.Error(err))
+			logger.Warn("chat: invalid request body", zap.Error(err))
 			writeJSON(w, http.StatusBadRequest, map[string]string{
 				"error": "invalid request body",
 			})
@@ -40,7 +40,7 @@ func Handler(svc *Service, logger *zap.Logger) http.HandlerFunc {
 
 		resp, err := svc.ProcessTurn(r.Context(), customerID, req.Query)
 		if err != nil {
-			logger.Error("chatv2: process turn failed", zap.Error(err))
+			logger.Error("chat: process turn failed", zap.Error(err))
 			writeJSON(w, http.StatusBadGateway, map[string]string{
 				"error": "failed to process chat turn",
 			})
@@ -79,7 +79,7 @@ func MetricsHandler(metricsRepo MetricsRepository, logger *zap.Logger) http.Hand
 	return func(w http.ResponseWriter, r *http.Request) {
 		metrics, err := metricsRepo.GetChatMetrics(r.Context())
 		if err != nil {
-			logger.Error("chatv2: failed to get chat metrics", zap.Error(err))
+			logger.Error("chat: failed to get chat metrics", zap.Error(err))
 			writeJSON(w, http.StatusInternalServerError, map[string]string{
 				"error": "failed to retrieve chat metrics",
 			})
