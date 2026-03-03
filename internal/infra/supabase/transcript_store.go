@@ -37,10 +37,11 @@ func (c *Client) InsertTranscript(ctx context.Context, row map[string]any) error
 	return nil
 }
 
-// ListTranscripts retorna todos os turnos de um cliente, ordenados por created_at asc.
+// ListTranscripts retorna turnos NÃO avaliados de um cliente, ordenados por created_at asc.
 // Usado pelo LLM-as-Judge para avaliar a conversa completa.
+// Transcrições já avaliadas (evaluated=true) são ignoradas.
 func (c *Client) ListTranscripts(ctx context.Context, customerID string) ([]TranscriptRow, error) {
-	path := fmt.Sprintf("llm_transcripts?customer_id=eq.%s&order=created_at.asc", customerID)
+	path := fmt.Sprintf("llm_transcripts?customer_id=eq.%s&evaluated=eq.false&order=created_at.asc", customerID)
 	body, err := c.doRequest(ctx, http.MethodGet, path)
 	if err != nil {
 		return nil, fmt.Errorf("list transcripts: %w", err)
@@ -51,4 +52,11 @@ func (c *Client) ListTranscripts(ctx context.Context, customerID string) ([]Tran
 		return nil, fmt.Errorf("decode transcripts: %w", err)
 	}
 	return rows, nil
+}
+
+// MarkTranscriptsEvaluated marca todas as transcrições de um cliente como avaliadas.
+// Isso evita que sejam reenviadas para o LLM-as-Judge.
+func (c *Client) MarkTranscriptsEvaluated(ctx context.Context, customerID string) error {
+	path := fmt.Sprintf("llm_transcripts?customer_id=eq.%s&evaluated=eq.false", customerID)
+	return c.doPatch(ctx, path, map[string]any{"evaluated": true})
 }

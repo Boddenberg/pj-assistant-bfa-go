@@ -41,6 +41,8 @@ func NewService(client *Client, sessions *SessionStore, repo AccountRepository, 
 
 // ProcessTurn executa um turno completo da conversa.
 func (s *Service) ProcessTurn(ctx context.Context, customerID, query string) (*FrontendResponse, error) {
+	bfaStart := time.Now() // ⏱ medir latência total do BFA
+
 	if customerID == "" {
 		customerID = "anonymous"
 	}
@@ -65,16 +67,20 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string) (*F
 	agentResp, err := s.callAgent(ctx, customerID, query, session, "")
 	latencyMs := time.Since(start).Milliseconds()
 	if err != nil {
+		bfaLatencyMs := time.Since(bfaStart).Milliseconds()
 		// Salvar transcrição de erro
-		s.saveTranscriptAsync(customerID, query, &AgentResponse{Answer: err.Error()}, latencyMs, true)
+		s.saveTranscriptAsync(customerID, query, &AgentResponse{Answer: err.Error()}, latencyMs, bfaLatencyMs, true)
 		return nil, fmt.Errorf("agent call failed: %w", err)
 	}
 
-	// Salvar transcrição de forma assíncrona (LLM-as-Judge)
-	s.saveTranscriptAsync(customerID, query, agentResp, latencyMs, false)
-
 	// 2. Processar resposta do agente — BFA apenas valida o campo
-	return s.processAgentResponse(ctx, customerID, query, session, agentResp)
+	frontResp, procErr := s.processAgentResponse(ctx, customerID, query, session, agentResp)
+
+	// Salvar transcrição de forma assíncrona (LLM-as-Judge) — mede latência total do BFA
+	bfaLatencyMs := time.Since(bfaStart).Milliseconds()
+	s.saveTranscriptAsync(customerID, query, agentResp, latencyMs, bfaLatencyMs, false)
+
+	return frontResp, procErr
 }
 
 // callAgent monta o AgentRequest e chama o Agent Python.
@@ -419,7 +425,7 @@ func sanitizeAnswer(answer string) string {
 
 // saveTranscriptAsync salva a transcrição do turno de forma assíncrona.
 // Fire-and-forget — erros são apenas logados, nunca bloqueiam o chat.
-func (s *Service) saveTranscriptAsync(customerID, query string, resp *AgentResponse, latencyMs int64, errOccurred bool) {
+func (s *Service) saveTranscriptAsync(customerID, query string, resp *AgentResponse, latencyMs int64, bfaLatencyMs int64, errOccurred bool) {
 	ragCtx := resp.RagContexts
 	if ragCtx == nil {
 		ragCtx = []string{}
@@ -437,6 +443,7 @@ func (s *Service) saveTranscriptAsync(customerID, query string, resp *AgentRespo
 		Intent:        derefStr(resp.Intent),
 		Confidence:    resp.Confidence,
 		LatencyMs:     latencyMs,
+		BfaLatencyMs:  bfaLatencyMs,
 		ErrorOccurred: errOccurred,
 		TokensUsed:    tokensUsed,
 	}
@@ -521,6 +528,14 @@ func (s *Service) evaluateAsync(customerID string) {
 				zap.Error(err),
 			)
 			return
+		}
+
+		// 5. Marcar transcrições como avaliadas (não reenvia na próxima vez)
+		if err := s.transcripts.MarkTranscriptsEvaluated(ctx, customerID); err != nil {
+			s.logger.Warn("evaluate: failed to mark transcripts as evaluated",
+				zap.String("customer_id", customerID),
+				zap.Error(err),
+			)
 		}
 
 		s.logger.Info("✅ LLM-as-Judge avaliação salva com sucesso",

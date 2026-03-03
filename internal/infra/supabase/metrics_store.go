@@ -22,6 +22,8 @@ type ChatMetricsRow struct {
 type AgentPerformanceRow struct {
 	AvgLatencyMs        float64 `json:"avg_latency_ms"`
 	P95LatencyMs        float64 `json:"p95_latency_ms"`
+	AvgBfaLatencyMs     float64 `json:"avg_bfa_latency_ms"`
+	P95BfaLatencyMs     float64 `json:"p95_bfa_latency_ms"`
 	AvgTokensPerRequest float64 `json:"avg_tokens_per_request"`
 	TotalTokens         int64   `json:"total_tokens"`
 	EstimatedCostUSD    float64 `json:"estimated_cost_usd"`

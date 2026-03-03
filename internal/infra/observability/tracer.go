@@ -13,7 +13,14 @@ import (
 
 // InitTracer configures OpenTelemetry tracing with OTLP/gRPC exporter.
 // Returns a shutdown function that should be called on application exit.
+// If endpoint is empty or the default localhost, tracing is disabled (no-op).
 func InitTracer(endpoint, serviceName string) (func(context.Context) error, error) {
+	// Skip tracing when no real collector is configured
+	if endpoint == "" || endpoint == "localhost:4317" {
+		noop := func(context.Context) error { return nil }
+		return noop, nil
+	}
+
 	ctx := context.Background()
 
 	exporter, err := otlptracegrpc.New(ctx,

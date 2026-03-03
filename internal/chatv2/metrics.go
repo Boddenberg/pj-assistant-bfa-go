@@ -25,6 +25,8 @@ type ChatMetricsResponse struct {
 type AgentPerformanceMetrics struct {
 	AvgLatencyMs        float64 `json:"avg_latency_ms"`
 	P95LatencyMs        float64 `json:"p95_latency_ms"`
+	AvgBfaLatencyMs     float64 `json:"avg_bfa_latency_ms"`
+	P95BfaLatencyMs     float64 `json:"p95_bfa_latency_ms"`
 	AvgTokensPerRequest float64 `json:"avg_tokens_per_request"`
 	TotalTokens         int64   `json:"total_tokens"`
 	EstimatedCostUSD    float64 `json:"estimated_cost_usd"`
@@ -123,6 +125,8 @@ func (r *SupabaseMetricsRepository) GetChatMetrics(ctx context.Context) (*ChatMe
 		AgentPerformance: AgentPerformanceMetrics{
 			AvgLatencyMs:        row.AgentPerformance.AvgLatencyMs,
 			P95LatencyMs:        row.AgentPerformance.P95LatencyMs,
+			AvgBfaLatencyMs:     row.AgentPerformance.AvgBfaLatencyMs,
+			P95BfaLatencyMs:     row.AgentPerformance.P95BfaLatencyMs,
 			AvgTokensPerRequest: row.AgentPerformance.AvgTokensPerRequest,
 			TotalTokens:         row.AgentPerformance.TotalTokens,
 			EstimatedCostUSD:    row.AgentPerformance.EstimatedCostUSD,
