@@ -34,11 +34,10 @@ type DevSetCreditLimitResponse struct {
 
 // DevGenerateTransactionsRequest is the body for POST /v1/dev/generate-transactions.
 type DevGenerateTransactionsRequest struct {
-	CustomerID   string `json:"customerId"`
-	Count        int    `json:"count"`
-	Months       int    `json:"months"`       // how many months back to spread transactions (default 1, max 12)
-	Period       string `json:"period"`       // "current-month" or "last-12-months" (overrides months if set)
-	ApplyBalance bool   `json:"applyBalance"` // if true, also update account balance with net impact (default false)
+	CustomerID string `json:"customerId"`
+	Count      int    `json:"count"`
+	Months     int    `json:"months"` // how many months back to spread transactions (default 1, max 12)
+	Period     string `json:"period"` // "current-month" or "last-12-months" (overrides months if set)
 }
 
 // DevGenerateTransactionsResponse is returned by POST /v1/dev/generate-transactions.
@@ -48,6 +47,7 @@ type DevGenerateTransactionsResponse struct {
 	Income       float64       `json:"income"`
 	Expenses     float64       `json:"expenses"`
 	NetImpact    float64       `json:"netImpact"`
+	NewBalance   float64       `json:"newBalance"`
 	Message      string        `json:"message"`
 	Transactions []Transaction `json:"transactions"`
 }
@@ -68,4 +68,5 @@ type DevAddCardPurchaseResponse struct {
 	Generated   int     `json:"generated"`
 	TotalAmount float64 `json:"totalAmount"`
 	Message     string  `json:"message"`
+}
 }

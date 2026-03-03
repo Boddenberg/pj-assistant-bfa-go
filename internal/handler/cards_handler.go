@@ -56,6 +56,22 @@ func listCardsHandler(bankSvc *service.BankingService, logger *zap.Logger) http.
 	}
 }
 
+func availableCardsHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := tracer.Start(r.Context(), "GET /v1/customers/{customerId}/cards/available")
+		defer span.End()
+
+		customerID := chi.URLParam(r, "customerId")
+		resp, err := bankSvc.GetAvailableCards(ctx, customerID)
+		if err != nil {
+			handleServiceError(w, err, logger)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
 func cardRequestHandler(bankSvc *service.BankingService, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, span := tracer.Start(r.Context(), "POST /v1/cards/request")
@@ -73,14 +89,48 @@ func cardRequestHandler(bankSvc *service.BankingService, logger *zap.Logger) htt
 			return
 		}
 
+		// Resolve product from catalog (or fallback to legacy fields)
+		var product *domain.CardProduct
+		if apiReq.ProductID != "" {
+			for _, p := range domain.CardProductCatalog {
+				if p.ID == apiReq.ProductID {
+					cp := p
+					product = &cp
+					break
+				}
+			}
+			if product == nil {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("produto '%s' não encontrado no catálogo", apiReq.ProductID))
+				return
+			}
+		}
+
+		cardBrand := apiReq.PreferredBrand
 		cardType := "corporate"
 		if apiReq.VirtualCard {
 			cardType = "virtual"
 		}
 
+		if product != nil {
+			cardBrand = product.Brand
+			cardType = product.CardType
+
+			// Validate requested limit against product boundaries
+			if apiReq.RequestedLimit < product.MinLimit {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf(
+					"limite mínimo para %s é R$ %.2f", product.Name, product.MinLimit))
+				return
+			}
+			if product.MaxLimit > 0 && apiReq.RequestedLimit > product.MaxLimit {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf(
+					"limite máximo para %s é R$ %.2f", product.Name, product.MaxLimit))
+				return
+			}
+		}
+
 		req := &domain.CreditCardRequest{
 			AccountID:      account.ID,
-			CardBrand:      apiReq.PreferredBrand,
+			CardBrand:      cardBrand,
 			CardType:       cardType,
 			DueDay:         apiReq.DueDay,
 			RequestedLimit: apiReq.RequestedLimit,
@@ -114,11 +164,16 @@ func cardRequestHandler(bankSvc *service.BankingService, logger *zap.Logger) htt
 			deliveryDays = 0
 		}
 
+		productName := ""
+		if product != nil {
+			productName = product.Name
+		}
+
 		resp := domain.CreditCardRequestResponse{
 			RequestID:             card.ID,
 			Status:                "approved",
 			Card:                  cardResp,
-			Message:               "Cartão aprovado com sucesso",
+			Message:               fmt.Sprintf("Cartão %s aprovado com sucesso", productName),
 			ApprovedLimit:         card.CreditLimit,
 			EstimatedDeliveryDays: deliveryDays,
 		}

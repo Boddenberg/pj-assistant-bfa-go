@@ -31,6 +31,40 @@ const (
  * Credit Cards
  */
 
+// GetAvailableCards returns the card products available for the customer,
+// filtering out products whose minimum limit exceeds the customer's available credit.
+func (s *BankingService) GetAvailableCards(ctx context.Context, customerID string) (*domain.AvailableCardResponse, error) {
+	ctx, span := bankTracer.Start(ctx, "BankingService.GetAvailableCards")
+	defer span.End()
+
+	acct, err := s.store.GetPrimaryAccount(ctx, customerID)
+	if err != nil {
+		return nil, err
+	}
+
+	available := acct.AvailableCreditLimit
+	var products []domain.AvailableCardProduct
+
+	for _, p := range domain.CardProductCatalog {
+		if p.MinLimit > available {
+			continue // customer can't afford even the minimum
+		}
+		customerMax := available
+		if p.MaxLimit > 0 && p.MaxLimit < customerMax {
+			customerMax = p.MaxLimit
+		}
+		products = append(products, domain.AvailableCardProduct{
+			CardProduct:      p,
+			CustomerMaxLimit: customerMax,
+		})
+	}
+
+	return &domain.AvailableCardResponse{
+		AvailableCreditLimit: available,
+		Products:             products,
+	}, nil
+}
+
 func (s *BankingService) RequestCreditCard(ctx context.Context, customerID string, req *domain.CreditCardRequest) (*domain.CreditCard, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.RequestCreditCard")
 	defer span.End()

@@ -113,6 +113,8 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		 */
 		r.Get("/customers/{customerId}/cards", listCardsHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/credit-cards", listCardsHandler(bankSvc, logger))
+		r.Get("/customers/{customerId}/cards/available", availableCardsHandler(bankSvc, logger))
+		r.Get("/customers/{customerId}/credit-cards/available", availableCardsHandler(bankSvc, logger))
 		r.Get("/customers/{customerId}/credit-limit", creditLimitHandler(bankSvc, logger))
 		r.Post("/cards/request", cardRequestHandler(bankSvc, logger))
 		r.Post("/customers/{customerId}/credit-cards/request", cardRequestHandler(bankSvc, logger))

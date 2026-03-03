@@ -229,26 +229,38 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		})
 	}
 
-	// Only update the account balance if explicitly requested via applyBalance flag.
-	// By default, generated transactions are just for extrato/history and should NOT
-	// change the real account balance — that was causing random balance fluctuations.
-	if req.ApplyBalance && netImpact != 0 {
-		if _, balErr := s.store.UpdateAccountBalance(ctx, req.CustomerID, netImpact); balErr != nil {
+	// Always update the account balance so generated transactions are reflected
+	// in the real balance, bank statement, income and expenses consistently.
+	var newBalance float64
+	if netImpact != 0 {
+		updatedAcct, balErr := s.store.UpdateAccountBalance(ctx, req.CustomerID, netImpact)
+		if balErr != nil {
 			s.logger.Error("DEV: failed to update balance after generating transactions",
 				zap.String("customer_id", req.CustomerID),
 				zap.Float64("net_impact", netImpact),
 				zap.Error(balErr),
 			)
 		} else {
+			newBalance = updatedAcct.Balance
 			s.logger.Info("DEV: balance adjusted after transaction generation",
 				zap.Float64("net_impact", netImpact),
+				zap.Float64("new_balance", newBalance),
 			)
+		}
+	} else {
+		// No net impact, fetch current balance for the response
+		if acct, err := s.store.GetPrimaryAccount(ctx, req.CustomerID); err == nil {
+			newBalance = acct.Balance
 		}
 	}
 
 	s.logger.Info("DEV: transactions generated",
 		zap.String("customer_id", req.CustomerID),
 		zap.Int("generated", generated),
+		zap.Float64("income", totalIncome),
+		zap.Float64("expenses", totalExpenses),
+		zap.Float64("net_impact", netImpact),
+		zap.Float64("new_balance", newBalance),
 	)
 
 	return &domain.DevGenerateTransactionsResponse{
@@ -257,7 +269,8 @@ func (s *BankingService) DevGenerateTransactions(ctx context.Context, req *domai
 		Income:       totalIncome,
 		Expenses:     totalExpenses,
 		NetImpact:    netImpact,
-		Message:      fmt.Sprintf("%d transações geradas com sucesso", generated),
+		NewBalance:   newBalance,
+		Message:      fmt.Sprintf("%d transações geradas com sucesso (saldo atualizado: R$ %.2f)", generated, newBalance),
 		Transactions: generatedTxns,
 	}, nil
 }

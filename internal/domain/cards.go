@@ -3,6 +3,83 @@ package domain
 import "time"
 
 /*
+ * Credit Card PJ — Product Catalog
+ */
+
+// CardProduct represents a card product template in the catalog.
+type CardProduct struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Brand       string  `json:"brand"`
+	CardType    string  `json:"cardType"` // corporate, virtual
+	MinLimit    float64 `json:"minLimit"`
+	MaxLimit    float64 `json:"maxLimit"` // 0 = sem teto (usa o limite disponível)
+	AnnualFee   float64 `json:"annualFee"`
+	Description string  `json:"description"`
+	Benefits    string  `json:"benefits"`
+}
+
+// CardProductCatalog — hardcoded product catalog for PJ cards.
+var CardProductCatalog = []CardProduct{
+	{
+		ID:          "itau-pj-basic",
+		Name:        "Itaú PJ Básico",
+		Brand:       "Elo",
+		CardType:    "corporate",
+		MinLimit:    500,
+		MaxLimit:    10000,
+		AnnualFee:   0,
+		Description: "Cartão corporativo essencial sem anuidade",
+		Benefits:    "Sem anuidade, controle de gastos",
+	},
+	{
+		ID:          "itau-pj-gold",
+		Name:        "Itaú PJ Gold",
+		Brand:       "Visa",
+		CardType:    "corporate",
+		MinLimit:    5000,
+		MaxLimit:    50000,
+		AnnualFee:   29.90,
+		Description: "Cartão empresarial com benefícios Gold",
+		Benefits:    "Seguro viagem, sala VIP nacional",
+	},
+	{
+		ID:          "itau-pj-platinum",
+		Name:        "Itaú PJ Platinum",
+		Brand:       "Mastercard",
+		CardType:    "corporate",
+		MinLimit:    15000,
+		MaxLimit:    200000,
+		AnnualFee:   59.90,
+		Description: "Cartão premium para empresas em crescimento",
+		Benefits:    "Sala VIP internacional, concierge, seguro compras",
+	},
+	{
+		ID:          "itau-pj-virtual",
+		Name:        "Itaú PJ Virtual",
+		Brand:       "Visa",
+		CardType:    "virtual",
+		MinLimit:    100,
+		MaxLimit:    50000,
+		AnnualFee:   0,
+		Description: "Cartão virtual para compras online",
+		Benefits:    "Emissão instantânea, uso exclusivo online",
+	},
+}
+
+// AvailableCardResponse is returned by GET /v1/customers/{id}/cards/available.
+type AvailableCardResponse struct {
+	AvailableCreditLimit float64                `json:"availableCreditLimit"`
+	Products             []AvailableCardProduct `json:"products"`
+}
+
+// AvailableCardProduct is a card product with limits adjusted to the customer's credit.
+type AvailableCardProduct struct {
+	CardProduct
+	CustomerMaxLimit float64 `json:"customerMaxLimit"` // min(product.MaxLimit, available credit)
+}
+
+/*
  * Credit Card PJ
  */
 
@@ -107,10 +184,11 @@ type CreditCardAPIResponse struct {
 // CreditCardRequestBody is the body for POST /v1/cards/request.
 type CreditCardRequestBody struct {
 	CustomerID     string  `json:"customerId"`
-	PreferredBrand string  `json:"preferredBrand,omitempty"`
-	RequestedLimit float64 `json:"requestedLimit"`
-	DueDay         int     `json:"dueDay,omitempty"`
-	VirtualCard    bool    `json:"virtualCard"`
+	ProductID      string  `json:"productId"`                // from the catalog (e.g. "itau-pj-gold")
+	RequestedLimit float64 `json:"requestedLimit"`           // customer-chosen limit
+	DueDay         int     `json:"dueDay,omitempty"`         // vencimento da fatura
+	PreferredBrand string  `json:"preferredBrand,omitempty"` // backward-compat, overridden by product
+	VirtualCard    bool    `json:"virtualCard"`              // backward-compat, overridden by product
 }
 
 // CreditCardRequestResponse is returned by POST /v1/cards/request.
