@@ -10,6 +10,7 @@ import (
 
 	"github.com/boddenberg/pj-assistant-bfa-go/internal/domain"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // ============================================================
@@ -131,6 +132,10 @@ func (c *Client) CreateCustomerWithAccount(ctx context.Context, req *domain.Regi
 	customerID := uuid.New().String()
 	agencia := fmt.Sprintf("%04d", rand.Intn(10000))
 	conta := fmt.Sprintf("%07d-%d", rand.Intn(10000000), rand.Intn(10))
+	accountID := uuid.New().String()
+
+	const initialBalance = 10000.00
+	const creditCardLimit = 10000.00
 
 	// 1. Create customer profile
 	profileData := map[string]any{
@@ -157,16 +162,16 @@ func (c *Client) CreateCustomerWithAccount(ctx context.Context, req *domain.Regi
 		return nil, fmt.Errorf("create customer profile: %w", err)
 	}
 
-	// 2. Create account
+	// 2. Create account — saldo inicial R$10.000
 	accountData := map[string]any{
-		"id":                uuid.New().String(),
+		"id":                accountID,
 		"customer_id":       customerID,
 		"account_type":      "checking",
 		"account_number":    conta,
 		"branch":            agencia,
 		"digit":             "0",
-		"balance":           0,
-		"available_balance": 0,
+		"balance":           initialBalance,
+		"available_balance": initialBalance,
 		"overdraft_limit":   0,
 		"currency":          "BRL",
 		"status":            "active",
@@ -188,6 +193,56 @@ func (c *Client) CreateCustomerWithAccount(ctx context.Context, req *domain.Regi
 	_, err = c.doPost(ctx, "auth_credentials", credData)
 	if err != nil {
 		return nil, fmt.Errorf("create auth credentials: %w", err)
+	}
+
+	// 4. Create credit card — limite R$10.000
+	last4 := fmt.Sprintf("%04d", time.Now().UnixNano()%10000)
+	cardData := map[string]any{
+		"customer_id":        customerID,
+		"account_id":         accountID,
+		"card_number_last4":  last4,
+		"card_holder_name":   req.RepresentanteName,
+		"card_brand":         "Visa",
+		"card_type":          "corporate",
+		"credit_limit":       creditCardLimit,
+		"available_limit":    creditCardLimit,
+		"used_limit":         0,
+		"billing_day":        10,
+		"due_day":            20,
+		"status":             "active",
+		"pix_credit_enabled": true,
+		"pix_credit_limit":   creditCardLimit,
+		"pix_credit_used":    0,
+		"issued_at":          time.Now().Format(time.RFC3339),
+		"expires_at":         time.Now().AddDate(5, 0, 0).Format(time.RFC3339),
+	}
+
+	_, err = c.doPost(ctx, "credit_cards", cardData)
+	if err != nil {
+		// Não bloquear criação da conta se falhar o cartão
+		c.logger.Warn("failed to create credit card on account creation",
+			zap.String("customer_id", customerID),
+			zap.Error(err),
+		)
+	}
+
+	// 5. Create PIX key (CNPJ) — chave automática
+	pixKeyData := map[string]any{
+		"id":          uuid.New().String(),
+		"customer_id": customerID,
+		"account_id":  accountID,
+		"key_type":    "cnpj",
+		"key_value":   req.CNPJ,
+		"status":      "active",
+	}
+
+	_, err = c.doPost(ctx, "pix_keys", pixKeyData)
+	if err != nil {
+		// Não bloquear criação da conta se falhar a chave PIX
+		c.logger.Warn("failed to create PIX key on account creation",
+			zap.String("customer_id", customerID),
+			zap.Error(err),
+		)
 	}
 
 	return &domain.RegisterResponse{

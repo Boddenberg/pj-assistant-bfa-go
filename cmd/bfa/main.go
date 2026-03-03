@@ -126,21 +126,30 @@ func main() {
 	}
 
 	// --- Chat V2 (Go puro — onboarding orquestrado pelo BFA) ---
-	chatV2Client := chatv2.NewClient(cfg.ChatAgentURL, 30*time.Second, logger)
+	chatV2Client := chatv2.NewClient(cfg.ChatAgentURL, 30*time.Second, cfg.ChatMaxRetries, cfg.ChatRetryDelay, logger)
 	chatV2Sessions := chatv2.NewSessionStore()
 	var chatV2Repo chatv2.AccountRepository
+	var chatV2Transcripts chatv2.TranscriptRepository
+	var chatV2Evaluations chatv2.EvaluationRepository
+	var chatV2Metrics chatv2.MetricsRepository
 	if supabaseClient != nil {
 		chatV2Repo = chatv2.NewSupabaseAccountRepository(supabaseClient, logger)
+		chatV2Transcripts = chatv2.NewSupabaseTranscriptRepository(supabaseClient, logger)
+		chatV2Evaluations = chatv2.NewSupabaseEvaluationRepository(supabaseClient, logger)
+		chatV2Metrics = chatv2.NewSupabaseMetricsRepository(supabaseClient, logger)
 		logger.Info("chatv2 using Supabase repository")
 	} else {
 		chatV2Repo = chatv2.NewInMemoryAccountRepository(logger)
+		chatV2Transcripts = chatv2.NewInMemoryTranscriptRepository(logger)
+		chatV2Evaluations = chatv2.NewInMemoryEvaluationRepository(logger)
+		chatV2Metrics = chatv2.NewInMemoryMetricsRepository(logger)
 		logger.Warn("chatv2 using in-memory repository (Supabase not configured)")
 	}
-	chatV2Svc := chatv2.NewService(chatV2Client, chatV2Sessions, chatV2Repo, logger)
+	chatV2Svc := chatv2.NewService(chatV2Client, chatV2Sessions, chatV2Repo, chatV2Transcripts, chatV2Evaluations, logger)
 	logger.Info("chatv2 service enabled", zap.String("agent_url", cfg.ChatAgentURL))
 
 	// --- Router ---
-	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatV2Svc, metrics, logger)
+	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatV2Svc, chatV2Metrics, metrics, logger)
 
 	// --- Server ---
 	srv := &http.Server{

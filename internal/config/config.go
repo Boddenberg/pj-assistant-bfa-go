@@ -17,7 +17,9 @@ type Config struct {
 	ProfileAPIURL      string
 	TransactionsAPIURL string
 	AgentAPIURL        string
-	ChatAgentURL       string // URL do Agent Python para o chat (POST /v1/chat)
+	ChatAgentURL       string        // URL do Agent Python para o chat (POST /v1/chat)
+	ChatMaxRetries     int           // quantas vezes retentar chamadas ao agente (0 = sem retry)
+	ChatRetryDelay     time.Duration // delay entre retries ao agente
 
 	// HTTP client
 	HTTPTimeout time.Duration
@@ -62,6 +64,8 @@ func Load() *Config {
 		TransactionsAPIURL: getEnv("TRANSACTIONS_API_URL", "http://localhost:8082"),
 		AgentAPIURL:        getEnv("AGENT_API_URL", "http://localhost:8090"),
 		ChatAgentURL:       getEnv("CHAT_AGENT_URL", "https://pj-assistant-agent-py-production.up.railway.app"),
+		ChatMaxRetries:     getEnvInt("CHAT_MAX_RETRIES", 3),
+		ChatRetryDelay:     getEnvDuration("CHAT_RETRY_DELAY", 500*time.Millisecond),
 
 		HTTPTimeout: getEnvDuration("HTTP_TIMEOUT", 10*time.Second),
 

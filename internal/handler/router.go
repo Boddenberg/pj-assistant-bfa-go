@@ -22,7 +22,7 @@ var tracer = otel.Tracer("handler")
 
 // NewRouter creates the HTTP router with all routes and middleware.
 // Routes follow the API contract defined for the PJ Assistant frontend.
-func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatV2Svc *chatv2.Service, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
+func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc *service.AuthService, chatV2Svc *chatv2.Service, chatV2Metrics chatv2.MetricsRepository, metrics *observability.Metrics, logger *zap.Logger) http.Handler {
 	r := chi.NewRouter()
 
 	// --- Middleware ---
@@ -217,6 +217,9 @@ func NewRouter(svc *service.Assistant, bankSvc *service.BankingService, authSvc 
 		// =============================================
 		r.Post("/chat", chatv2.Handler(chatV2Svc, logger))
 		r.Post("/chat/{customerID}", chatv2.Handler(chatV2Svc, logger))
+		if chatV2Metrics != nil {
+			r.Get("/chat/metrics", chatv2.MetricsHandler(chatV2Metrics, logger))
+		}
 	})
 
 	return r

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -17,20 +18,24 @@ import (
 //     salva no banco, e faz pass-through da resposta do agente para o frontend.
 //   - O BFA NÃO sabe a jornada, NÃO controla a sequência, NÃO sobrescreve step/next_step.
 type Service struct {
-	client     *Client
-	sessions   *SessionStore
-	validators ValidatorRegistry
-	repo       AccountRepository
-	logger     *zap.Logger
+	client      *Client
+	sessions    *SessionStore
+	validators  ValidatorRegistry
+	repo        AccountRepository
+	transcripts TranscriptRepository
+	evaluations EvaluationRepository
+	logger      *zap.Logger
 }
 
-func NewService(client *Client, sessions *SessionStore, repo AccountRepository, logger *zap.Logger) *Service {
+func NewService(client *Client, sessions *SessionStore, repo AccountRepository, transcripts TranscriptRepository, evaluations EvaluationRepository, logger *zap.Logger) *Service {
 	return &Service{
-		client:     client,
-		sessions:   sessions,
-		validators: NewValidatorRegistry(repo),
-		repo:       repo,
-		logger:     logger,
+		client:      client,
+		sessions:    sessions,
+		validators:  NewValidatorRegistry(repo),
+		repo:        repo,
+		transcripts: transcripts,
+		evaluations: evaluations,
+		logger:      logger,
 	}
 }
 
@@ -56,10 +61,17 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string) (*F
 	}
 
 	// 1. Chamar agente — ele decide o que fazer
+	start := time.Now()
 	agentResp, err := s.callAgent(ctx, customerID, query, session, "")
+	latencyMs := time.Since(start).Milliseconds()
 	if err != nil {
+		// Salvar transcrição de erro
+		s.saveTranscriptAsync(customerID, query, &AgentResponse{Answer: err.Error()}, latencyMs, true)
 		return nil, fmt.Errorf("agent call failed: %w", err)
 	}
+
+	// Salvar transcrição de forma assíncrona (LLM-as-Judge)
+	s.saveTranscriptAsync(customerID, query, agentResp, latencyMs, false)
 
 	// 2. Processar resposta do agente — BFA apenas valida o campo
 	return s.processAgentResponse(ctx, customerID, query, session, agentResp)
@@ -111,6 +123,9 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		s.logger.Info("🔄 reset solicitado pelo agente — limpando sessão",
 			zap.String("customer_id", customerID),
 		)
+		if err := s.repo.DeleteSession(ctx, customerID); err != nil {
+			s.logger.Error("failed to delete session from db", zap.Error(err))
+		}
 		s.sessions.Delete(customerID)
 		resetStep := strPtr("reset")
 		return &FrontendResponse{
@@ -193,6 +208,9 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 					zap.String("step", step),
 					zap.Int("retries", session.Retries),
 				)
+				if err := s.repo.DeleteSession(ctx, customerID); err != nil {
+					s.logger.Error("failed to delete session from db on reset", zap.Error(err))
+				}
 				s.sessions.Delete(customerID)
 				resetStep := strPtr("reset")
 				return &FrontendResponse{
@@ -253,6 +271,9 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 				zap.String("step", step),
 				zap.Int("retries", session.Retries),
 			)
+			if err := s.repo.DeleteSession(ctx, customerID); err != nil {
+				s.logger.Error("failed to delete session from db on reset", zap.Error(err))
+			}
 			s.sessions.Delete(customerID)
 			resetStep := strPtr("reset")
 			return &FrontendResponse{
@@ -320,7 +341,11 @@ func (s *Service) checkCompletion(ctx context.Context, customerID, query string,
 		return s.buildResponse(retryResp, nil), nil
 	}
 
-	// Todos os campos preenchidos — finalizar conta
+	// Todos os campos preenchidos — disparar avaliação LLM-as-Judge ANTES de finalizar
+	// (depois do FinalizeAccount o customerID temporário é perdido)
+	s.evaluateAsync(customerID)
+
+	// Finalizar conta
 	accountData, err := s.repo.FinalizeAccount(ctx, customerID, session.OnboardingData)
 	if err != nil {
 		s.logger.Error("finalize account failed", zap.Error(err))
@@ -390,6 +415,121 @@ func sanitizeAnswer(answer string) string {
 		return "Dado recebido! Continuando..."
 	}
 	return result
+}
+
+// saveTranscriptAsync salva a transcrição do turno de forma assíncrona.
+// Fire-and-forget — erros são apenas logados, nunca bloqueiam o chat.
+func (s *Service) saveTranscriptAsync(customerID, query string, resp *AgentResponse, latencyMs int64, errOccurred bool) {
+	ragCtx := resp.RagContexts
+	if ragCtx == nil {
+		ragCtx = []string{}
+	}
+
+	// Estimar tokens: ~4 chars por token (heurística razoável para português)
+	tokensUsed := (len(query) + len(resp.Answer)) / 4
+
+	t := Transcript{
+		CustomerID:    customerID,
+		Query:         query,
+		Answer:        resp.Answer,
+		RagContexts:   ragCtx,
+		Step:          derefStr(resp.Step),
+		Intent:        derefStr(resp.Intent),
+		Confidence:    resp.Confidence,
+		LatencyMs:     latencyMs,
+		ErrorOccurred: errOccurred,
+		TokensUsed:    tokensUsed,
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.transcripts.SaveTranscript(ctx, t); err != nil {
+			s.logger.Warn("failed to save transcript (async)",
+				zap.String("customer_id", customerID),
+				zap.Error(err),
+			)
+		}
+	}()
+}
+
+// evaluateAsync dispara a avaliação LLM-as-Judge de forma assíncrona.
+// Chamado ANTES do FinalizeAccount para garantir que o customerID temporário
+// ainda existe e todos os turnos estão no llm_transcripts.
+// Fire-and-forget — erros são apenas logados, nunca bloqueiam a abertura de conta.
+func (s *Service) evaluateAsync(customerID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		// 1. Buscar todos os turnos da conversa
+		transcripts, err := s.transcripts.ListTranscripts(ctx, customerID)
+		if err != nil {
+			s.logger.Warn("evaluate: failed to list transcripts",
+				zap.String("customer_id", customerID),
+				zap.Error(err),
+			)
+			return
+		}
+
+		if len(transcripts) == 0 {
+			s.logger.Warn("evaluate: no transcripts found, skipping",
+				zap.String("customer_id", customerID),
+			)
+			return
+		}
+
+		// 2. Montar o EvaluateRequest
+		conversation := make([]TranscriptEntry, len(transcripts))
+		for i, t := range transcripts {
+			conversation[i] = TranscriptEntry{
+				Query:      t.Query,
+				Answer:     t.Answer,
+				Contexts:   t.RagContexts,
+				Step:       t.Step,
+				Intent:     t.Intent,
+				Confidence: t.Confidence,
+				LatencyMs:  t.LatencyMs,
+				CreatedAt:  t.CreatedAt,
+			}
+		}
+
+		evalReq := EvaluateRequest{
+			CustomerID:   customerID,
+			Conversation: conversation,
+		}
+
+		s.logger.Info("📊 disparando LLM-as-Judge antes de finalizar conta",
+			zap.String("customer_id", customerID),
+			zap.Int("turns", len(conversation)),
+		)
+
+		// 3. Chamar o agente para avaliação
+		evalResp, err := s.client.Evaluate(ctx, evalReq)
+		if err != nil {
+			s.logger.Warn("evaluate: agent call failed",
+				zap.String("customer_id", customerID),
+				zap.Error(err),
+			)
+			return
+		}
+
+		// 4. Salvar resultado no banco
+		if err := s.evaluations.SaveEvaluation(ctx, *evalResp); err != nil {
+			s.logger.Warn("evaluate: failed to save evaluation",
+				zap.String("customer_id", customerID),
+				zap.Error(err),
+			)
+			return
+		}
+
+		s.logger.Info("✅ LLM-as-Judge avaliação salva com sucesso",
+			zap.String("customer_id", customerID),
+			zap.Float64("overall_score", evalResp.OverallScore),
+			zap.String("verdict", evalResp.Verdict),
+			zap.Int("criteria", len(evalResp.Criteria)),
+		)
+	}()
 }
 
 func derefStr(p *string) string {

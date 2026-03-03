@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -24,10 +25,12 @@ func mockAgentServer(response AgentResponse) *httptest.Server {
 
 func newTestService(agentURL string) *Service {
 	logger := zap.NewNop()
-	client := NewClient(agentURL, 5*1e9, logger) // 5s
+	client := NewClient(agentURL, 5*time.Second, 2, 100*time.Millisecond, logger)
 	sessions := NewSessionStore()
 	repo := NewInMemoryAccountRepository(logger)
-	return NewService(client, sessions, repo, logger)
+	transcripts := NewInMemoryTranscriptRepository(logger)
+	evaluations := NewInMemoryEvaluationRepository(logger)
+	return NewService(client, sessions, repo, transcripts, evaluations, logger)
 }
 
 var ctx = context.Background()
@@ -271,6 +274,10 @@ func TestProcessTurn_Welcome(t *testing.T) {
 func TestProcessTurn_InlineRejection(t *testing.T) {
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/evaluate" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		callCount++
 		var resp AgentResponse
 		if callCount == 1 {
@@ -372,6 +379,10 @@ func TestProcessTurn_ValidField(t *testing.T) {
 func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/evaluate" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		callCount++
 		var resp AgentResponse
 		if callCount == 1 {
@@ -461,6 +472,10 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/evaluate" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		callCount++
 
 		// Decode request to see validation_error
@@ -623,6 +638,10 @@ func TestProcessTurn_CPFAsName_SavedCorrectly(t *testing.T) {
 func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/evaluate" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		callCount++
 		var resp AgentResponse
 		if callCount == 1 {
@@ -674,6 +693,10 @@ func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/evaluate" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		callCount++
 
 		var req AgentRequest
@@ -798,6 +821,10 @@ func TestSanitizeAnswer_RemovesCampoAceitoBFA(t *testing.T) {
 func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
 	callCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/evaluate" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		callCount++
 		// Agent always rejects inline (step == next_step)
 		resp := AgentResponse{

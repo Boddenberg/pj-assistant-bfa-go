@@ -72,3 +72,20 @@ func truncate(s string, max int) string {
 	}
 	return s[:max] + "..."
 }
+
+// MetricsHandler retorna um http.HandlerFunc para GET /v1/chat/metrics.
+// Retorna todas as métricas do chat pré-computadas para o frontend.
+func MetricsHandler(metricsRepo MetricsRepository, logger *zap.Logger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		metrics, err := metricsRepo.GetChatMetrics(r.Context())
+		if err != nil {
+			logger.Error("chatv2: failed to get chat metrics", zap.Error(err))
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "failed to retrieve chat metrics",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, metrics)
+	}
+}

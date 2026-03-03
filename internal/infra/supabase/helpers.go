@@ -144,3 +144,65 @@ func readBody(resp *http.Response) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
+
+// doPostAny é como doPost, mas aceita qualquer tipo (slice, struct, etc).
+// Retorna o body com Prefer: return=representation.
+func (c *Client) doPostAny(ctx context.Context, table string, data any) ([]byte, error) {
+	url := fmt.Sprintf("%s/rest/v1/%s", c.baseURL, table)
+	jsonBody, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("apikey", c.apiKey)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.serviceRoleKey))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Prefer", "return=representation")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		c.logger.Error("supabase: POST request failed",
+			zap.String("table", table),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := readBody(resp)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.logger.Warn("supabase: POST non-2xx",
+			zap.String("table", table),
+			zap.Int("status", resp.StatusCode),
+			zap.String("body", string(body)),
+		)
+		return nil, fmt.Errorf("supabase POST %s returned %d: %s", table, resp.StatusCode, string(body))
+	}
+
+	c.logger.Debug("supabase: POST OK", zap.String("table", table), zap.Int("status", resp.StatusCode))
+	return body, nil
+}
+
+// extractIDFromResponse extrai o campo "id" do primeiro elemento de um array JSON
+// retornado pelo PostgREST com Prefer: return=representation.
+func extractIDFromResponse(body []byte) (string, error) {
+	var rows []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return "", fmt.Errorf("unmarshal response: %w", err)
+	}
+	if len(rows) == 0 {
+		return "", fmt.Errorf("empty response, expected at least 1 row")
+	}
+	return rows[0].ID, nil
+}

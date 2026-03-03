@@ -43,6 +43,7 @@ type CollectedItem struct {
 type AgentResponse struct {
 	CustomerID       string         `json:"customer_id"`
 	Answer           string         `json:"answer"`
+	RagContexts      []string       `json:"rag_contexts"`
 	Context          *string        `json:"context"`
 	Intent           *string        `json:"intent"`
 	Confidence       float64        `json:"confidence"`
@@ -125,3 +126,56 @@ func strPtr(s string) *string { return &s }
 
 // helper para ponteiro de bool
 func boolPtr(b bool) *bool { return &b }
+
+// --- BFA → Agent Python: LLM-as-Judge ---
+
+// EvaluateRequest é enviado ao agente para avaliação via LLM-as-Judge.
+// Contém a transcrição completa da conversa do cliente.
+type EvaluateRequest struct {
+	CustomerID   string            `json:"customer_id"`
+	Conversation []TranscriptEntry `json:"conversation"` // lista completa de turnos
+}
+
+// TranscriptEntry é um turno individual da conversa (query + answer + metadados).
+type TranscriptEntry struct {
+	Query      string   `json:"query"`
+	Answer     string   `json:"answer"`
+	Contexts   []string `json:"contexts"`
+	Step       string   `json:"step,omitempty"`
+	Intent     string   `json:"intent,omitempty"`
+	Confidence float64  `json:"confidence,omitempty"`
+	LatencyMs  int64    `json:"latency_ms,omitempty"`
+	CreatedAt  string   `json:"created_at"`
+}
+
+// --- Agent Python → BFA: resposta do LLM-as-Judge ---
+
+// EvaluateResponse é a resposta do agente após avaliar a conversa via LLM-as-Judge.
+type EvaluateResponse struct {
+	CustomerID   string                `json:"customer_id"`
+	OverallScore float64               `json:"overall_score"`
+	Verdict      string                `json:"verdict"` // "pass" | "fail" | "warning"
+	Criteria     []EvaluationCriterion `json:"criteria"`
+	Summary      string                `json:"summary"`
+	Improvements []string              `json:"improvements"`
+	NumTurns     int                   `json:"num_turns"`
+	Metadata     EvaluationMetadata    `json:"metadata"`
+	Timestamp    string                `json:"timestamp"`
+}
+
+// EvaluationCriterion é um critério individual avaliado pelo juiz.
+type EvaluationCriterion struct {
+	Criterion string  `json:"criterion"`
+	Score     float64 `json:"score"`
+	MaxScore  float64 `json:"max_score"`
+	Reasoning string  `json:"reasoning"`
+}
+
+// EvaluationMetadata contém informações sobre o processo de avaliação.
+type EvaluationMetadata struct {
+	JudgeModel         string  `json:"judge_model"`
+	JudgePromptVersion string  `json:"judge_prompt_version"`
+	TokensUsed         int     `json:"tokens_used"`
+	EstimatedCostUSD   float64 `json:"estimated_cost_usd"`
+	EvalDurationMs     float64 `json:"evaluation_duration_ms"`
+}

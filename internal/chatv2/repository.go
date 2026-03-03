@@ -19,6 +19,8 @@ type AccountRepository interface {
 	// LoadSession carrega os dados já preenchidos de uma sessão do banco.
 	// Retorna map[step]value. Se a sessão não existir, retorna nil.
 	LoadSession(ctx context.Context, sessionID string) (map[string]string, error)
+	// DeleteSession remove os dados temporários da sessão do banco.
+	DeleteSession(ctx context.Context, sessionID string) error
 }
 
 // AccountData são os dados da conta criada, retornados ao frontend.
@@ -62,6 +64,10 @@ func (r *InMemoryAccountRepository) SaveField(_ context.Context, sessionID, step
 
 func (r *InMemoryAccountRepository) LoadSession(_ context.Context, _ string) (map[string]string, error) {
 	return nil, nil // stub: sem persistência, nunca retoma
+}
+
+func (r *InMemoryAccountRepository) DeleteSession(_ context.Context, _ string) error {
+	return nil // stub: nada para deletar
 }
 
 func (r *InMemoryAccountRepository) FinalizeAccount(_ context.Context, sessionID string, data map[string]string) (*AccountData, error) {

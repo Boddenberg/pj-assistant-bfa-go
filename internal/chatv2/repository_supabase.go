@@ -89,6 +89,13 @@ func (r *SupabaseAccountRepository) LoadSession(ctx context.Context, sessionID s
 	return data, nil
 }
 
+func (r *SupabaseAccountRepository) DeleteSession(ctx context.Context, sessionID string) error {
+	r.logger.Info("🗑️  deletando sessão temporária do banco",
+		zap.String("session_id", sessionID),
+	)
+	return r.sb.DeleteOnboardingSession(ctx, sessionID)
+}
+
 func (r *SupabaseAccountRepository) FinalizeAccount(ctx context.Context, sessionID string, data map[string]string) (*AccountData, error) {
 	// Montar RegisterRequest com os dados do onboarding
 	req := &domain.RegisterRequest{

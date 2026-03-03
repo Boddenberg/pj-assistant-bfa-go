@@ -152,3 +152,12 @@ func (c *Client) CNPJExistsInOnboarding(ctx context.Context, cnpj string) (bool,
 	}
 	return true, nil
 }
+
+// DeleteOnboardingSession remove a sessão temporária do banco.
+func (c *Client) DeleteOnboardingSession(ctx context.Context, sessionID string) error {
+	ctx, span := tracer.Start(ctx, "Supabase.DeleteOnboardingSession")
+	defer span.End()
+
+	path := fmt.Sprintf("onboarding_sessions?session_id=eq.%s", sessionID)
+	return c.doDelete(ctx, path)
+}
