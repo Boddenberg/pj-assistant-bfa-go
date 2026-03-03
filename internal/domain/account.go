@@ -8,20 +8,22 @@ import "time"
 
 // Account represents a PJ bank account.
 type Account struct {
-	ID               string    `json:"id"`
-	CustomerID       string    `json:"customer_id"`
-	AccountType      string    `json:"account_type"`
-	Branch           string    `json:"branch"`
-	AccountNumber    string    `json:"account_number"`
-	Digit            string    `json:"digit"`
-	BankCode         string    `json:"bank_code"`
-	BankName         string    `json:"bank_name"`
-	Balance          float64   `json:"balance"`
-	AvailableBalance float64   `json:"available_balance"`
-	OverdraftLimit   float64   `json:"overdraft_limit"`
-	Currency         string    `json:"currency"`
-	Status           string    `json:"status"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID                   string    `json:"id"`
+	CustomerID           string    `json:"customer_id"`
+	AccountType          string    `json:"account_type"`
+	Branch               string    `json:"branch"`
+	AccountNumber        string    `json:"account_number"`
+	Digit                string    `json:"digit"`
+	BankCode             string    `json:"bank_code"`
+	BankName             string    `json:"bank_name"`
+	Balance              float64   `json:"balance"`
+	AvailableBalance     float64   `json:"available_balance"`
+	OverdraftLimit       float64   `json:"overdraft_limit"`
+	CreditLimit          float64   `json:"credit_limit"`
+	AvailableCreditLimit float64   `json:"available_credit_limit"`
+	Currency             string    `json:"currency"`
+	Status               string    `json:"status"`
+	CreatedAt            time.Time `json:"created_at"`
 }
 
 /*

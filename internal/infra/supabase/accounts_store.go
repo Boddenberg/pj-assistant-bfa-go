@@ -108,3 +108,54 @@ func (c *Client) UpdateAccountBalance(ctx context.Context, customerID string, de
 
 	return updated, nil
 }
+
+// UpdateAccountCreditLimit sets the pre-approved credit limit on the primary account.
+// It recalculates available_credit_limit as newLimit minus the sum of all existing card limits.
+func (c *Client) UpdateAccountCreditLimit(ctx context.Context, customerID string, newLimit float64) (*domain.Account, error) {
+	ctx, span := tracer.Start(ctx, "Supabase.UpdateAccountCreditLimit")
+	defer span.End()
+
+	acct, err := c.GetPrimaryAccount(ctx, customerID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sum up credit limits of all existing cards for this customer
+	cards, err := c.ListCreditCards(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("list credit cards for limit calc: %w", err)
+	}
+	var usedByCards float64
+	for _, card := range cards {
+		if card.Status == "active" || card.Status == "blocked" {
+			usedByCards += card.CreditLimit
+		}
+	}
+
+	available := newLimit - usedByCards
+	if available < 0 {
+		available = 0
+	}
+
+	err = c.doPatch(ctx, fmt.Sprintf("accounts?id=eq.%s", acct.ID), map[string]any{
+		"credit_limit":           newLimit,
+		"available_credit_limit": available,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	updated, err := c.GetPrimaryAccount(ctx, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("re-fetch after credit limit update: %w", err)
+	}
+
+	c.logger.Info("supabase: account credit limit updated",
+		zap.String("account_id", updated.ID),
+		zap.Float64("old_credit_limit", acct.CreditLimit),
+		zap.Float64("new_credit_limit", updated.CreditLimit),
+		zap.Float64("available_credit_limit", updated.AvailableCreditLimit),
+	)
+
+	return updated, nil
+}

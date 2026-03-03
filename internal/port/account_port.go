@@ -12,4 +12,5 @@ type AccountStore interface {
 	GetAccount(ctx context.Context, customerID, accountID string) (*domain.Account, error)
 	GetPrimaryAccount(ctx context.Context, customerID string) (*domain.Account, error)
 	UpdateAccountBalance(ctx context.Context, customerID string, delta float64) (*domain.Account, error)
+	UpdateAccountCreditLimit(ctx context.Context, customerID string, newLimit float64) (*domain.Account, error)
 }

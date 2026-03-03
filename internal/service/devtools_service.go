@@ -75,8 +75,8 @@ func (s *BankingService) DevAddBalance(ctx context.Context, req *domain.DevAddBa
 	}, nil
 }
 
-// DevSetCreditLimit sets the credit limit of a customer's credit card.
-// If CreditCardID is provided, updates that specific card; otherwise updates the first card.
+// DevSetCreditLimit sets the pre-approved credit limit on the customer's primary account.
+// This limit is consumed when the customer requests credit cards.
 func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevSetCreditLimitRequest) (*domain.DevSetCreditLimitResponse, error) {
 	ctx, span := bankTracer.Start(ctx, "BankingService.DevSetCreditLimit")
 	defer span.End()
@@ -88,36 +88,19 @@ func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevS
 		return nil, &domain.ErrValidation{Field: "creditLimit", Message: "deve ser positivo"}
 	}
 
-	// If a specific card ID is provided, update that card directly
-	if req.CreditCardID != "" {
-		card, err := s.store.GetCreditCard(ctx, req.CustomerID, req.CreditCardID)
-		if err != nil {
-			return nil, err
-		}
-		newAvailable := req.CreditLimit - card.UsedLimit
-		if newAvailable < 0 {
-			newAvailable = 0
-		}
-		if err := s.store.UpdateCreditCardUsedLimit(ctx, card.ID, card.UsedLimit, newAvailable); err != nil {
-			return nil, err
-		}
-		// UpdateCreditCardLimit updates credit_limit, available_limit, and pix_credit_limit
-		if err := s.store.UpdateCreditCardLimit(ctx, req.CustomerID, req.CreditLimit); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := s.store.UpdateCreditCardLimit(ctx, req.CustomerID, req.CreditLimit); err != nil {
-			return nil, err
-		}
+	// Update the credit limit at the account level
+	acct, err := s.store.UpdateAccountCreditLimit(ctx, req.CustomerID, req.CreditLimit)
+	if err != nil {
+		return nil, err
 	}
 
-	// Record the transaction for extrato/fatura
+	// Record the transaction for extrato
 	now := time.Now()
 	tx := map[string]any{
 		"id":          uuid.New().String(),
 		"customer_id": req.CustomerID,
 		"date":        now.Format(time.RFC3339),
-		"description": fmt.Sprintf("DevTools — Limite de crédito ajustado para R$ %.2f", req.CreditLimit),
+		"description": fmt.Sprintf("DevTools — Limite de crédito da conta ajustado para R$ %.2f", req.CreditLimit),
 		"amount":      0,
 		"type":        "credit",
 		"category":    "devtools",
@@ -129,15 +112,17 @@ func (s *BankingService) DevSetCreditLimit(ctx context.Context, req *domain.DevS
 		)
 	}
 
-	s.logger.Info("DEV: credit limit updated",
+	s.logger.Info("DEV: account credit limit updated",
 		zap.String("customer_id", req.CustomerID),
-		zap.Float64("new_limit", req.CreditLimit),
+		zap.Float64("new_limit", acct.CreditLimit),
+		zap.Float64("available_credit_limit", acct.AvailableCreditLimit),
 	)
 
 	return &domain.DevSetCreditLimitResponse{
-		Success:  true,
-		NewLimit: req.CreditLimit,
-		Message:  fmt.Sprintf("Limite de crédito atualizado para R$ %.2f", req.CreditLimit),
+		Success:              true,
+		NewLimit:             acct.CreditLimit,
+		AvailableCreditLimit: acct.AvailableCreditLimit,
+		Message:              fmt.Sprintf("Limite de crédito da conta atualizado para R$ %.2f (disponível: R$ %.2f)", acct.CreditLimit, acct.AvailableCreditLimit),
 	}, nil
 }
 

@@ -56,10 +56,24 @@ func (s *BankingService) RequestCreditCard(ctx context.Context, customerID strin
 		req.RequestedLimit = 10000 // default PJ limit
 	}
 
-	// Check account
-	_, err := s.store.GetAccount(ctx, customerID, req.AccountID)
+	// Check account exists and get credit limit info
+	acct, err := s.store.GetAccount(ctx, customerID, req.AccountID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Validate against the account's pre-approved credit limit
+	if acct.CreditLimit <= 0 {
+		return nil, &domain.ErrValidation{
+			Field:   "credit_limit",
+			Message: "cliente não possui limite de crédito pré-aprovado — use POST /v1/dev/set-credit-limit primeiro",
+		}
+	}
+	if req.RequestedLimit > acct.AvailableCreditLimit {
+		return nil, &domain.ErrValidation{
+			Field:   "requested_limit",
+			Message: fmt.Sprintf("limite solicitado (R$ %.2f) excede o limite de crédito disponível (R$ %.2f)", req.RequestedLimit, acct.AvailableCreditLimit),
+		}
 	}
 
 	card, err := s.store.CreateCreditCard(ctx, customerID, req)
@@ -68,10 +82,22 @@ func (s *BankingService) RequestCreditCard(ctx context.Context, customerID strin
 		return nil, err
 	}
 
+	// Deduct the card limit from the account's available credit limit
+	// UpdateAccountCreditLimit recalculates available based on existing cards
+	if _, patchErr := s.store.UpdateAccountCreditLimit(ctx, customerID, acct.CreditLimit); patchErr != nil {
+		s.logger.Error("failed to update available credit limit after card creation",
+			zap.String("customer_id", customerID),
+			zap.Error(patchErr),
+		)
+		// Card was already created — log but don't fail
+	}
+
 	s.logger.Info("credit card requested",
 		zap.String("customer_id", customerID),
 		zap.String("card_id", card.ID),
 		zap.String("brand", req.CardBrand),
+		zap.Float64("card_limit", req.RequestedLimit),
+		zap.Float64("account_credit_limit", acct.CreditLimit),
 	)
 
 	return card, nil

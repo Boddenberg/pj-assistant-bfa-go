@@ -18,17 +18,18 @@ type DevAddBalanceResponse struct {
 }
 
 // DevSetCreditLimitRequest is the body for POST /v1/dev/set-credit-limit.
+// Sets the pre-approved credit limit at the account level (not per card).
 type DevSetCreditLimitRequest struct {
-	CustomerID   string  `json:"customerId"`
-	CreditCardID string  `json:"creditCardId,omitempty"`
-	CreditLimit  float64 `json:"creditLimit"`
+	CustomerID  string  `json:"customerId"`
+	CreditLimit float64 `json:"creditLimit"`
 }
 
 // DevSetCreditLimitResponse is returned by POST /v1/dev/set-credit-limit.
 type DevSetCreditLimitResponse struct {
-	Success  bool    `json:"success"`
-	NewLimit float64 `json:"newLimit"`
-	Message  string  `json:"message"`
+	Success              bool    `json:"success"`
+	NewLimit             float64 `json:"newLimit"`
+	AvailableCreditLimit float64 `json:"availableCreditLimit"`
+	Message              string  `json:"message"`
 }
 
 // DevGenerateTransactionsRequest is the body for POST /v1/dev/generate-transactions.
