@@ -69,4 +69,3 @@ type DevAddCardPurchaseResponse struct {
 	TotalAmount float64 `json:"totalAmount"`
 	Message     string  `json:"message"`
 }
-}
