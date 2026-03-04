@@ -233,6 +233,18 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		}, nil
 	}
 
+	// Caso 2c: step == "completed" → agente diz que o onboarding terminou.
+	// Pode vir com next_step == "completed" (ou outro). Em vez de tratar
+	// como campo/inline-rejection, encaminhamos direto para checkCompletion.
+	if step == "completed" {
+		s.logger.Info("🏁 agente retornou step=completed — verificando campos",
+			zap.String("customer_id", customerID),
+			zap.String("next_step", nextStep),
+		)
+		s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
+		return s.checkCompletion(ctx, customerID, query, session, resp, isAuthenticated)
+	}
+
 	// Controle de retries: se mudou de step, resetar contador
 	if step != session.LastStep {
 		session.Retries = 0
@@ -466,6 +478,13 @@ func (s *Service) checkCompletion(ctx context.Context, customerID, query string,
 		}
 	}
 	s.logger.Info("🎉 onboarding completed — dados do cliente", logFields...)
+
+	// Limpar sessão em memória e no banco — próximo request com este ID começa do zero
+	s.sessions.Delete(customerID)
+	if err := s.repo.DeleteSession(ctx, customerID); err != nil {
+		s.logger.Warn("failed to delete temp session after account creation", zap.Error(err))
+	}
+	s.logger.Info("🧹 sessão limpa após criação de conta", zap.String("customer_id", customerID))
 
 	// Pass-through da resposta do agente + dados da conta
 	return s.buildResponse(resp, accountData), nil

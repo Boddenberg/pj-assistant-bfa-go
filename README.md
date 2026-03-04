@@ -32,11 +32,12 @@ O BFA é o backend de um aplicativo bancário PJ que oferece:
 | **Autenticação** | Registro, login, refresh token, reset de senha, JWT |
 | **Contas** | Listagem de contas, saldo, extrato |
 | **PIX** | Transferência (saldo ou cartão de crédito), agendamento, chaves, comprovante |
-| **Cartão de Crédito** | Solicitar, bloquear/desbloquear/cancelar, fatura, pagamento de fatura |
+| **Cartão de Crédito** | Catálogo de produtos, solicitar, bloquear/desbloquear/cancelar, fatura, pagamento |
 | **Boletos** | Validação de código de barras, pagamento |
 | **Débito** | Compra no débito |
 | **Analytics** | Resumo financeiro, orçamentos, favoritos, limites, notificações |
-| **Assistente IA** | Chat com agente LLM (RAG + tools) |
+| **Assistente IA** | Chat com agente LLM (RAG + tools) — consulta financeira |
+| **Chat Onboarding** | Abertura de conta PJ orquestrada pelo BFA com validação e sessão |
 | **Dev Tools** | Endpoints para popular dados de teste |
 
 **Princípio fundamental:** _Zero lógica no frontend — o backend retorna exatamente o que precisa ser exibido._
@@ -97,7 +98,8 @@ Config → Logger → Tracer → Metrics → Cache → CircuitBreaker
     → BankingService(store, metrics, logger)
     → AuthService(store, jwtSecret, ttls, devAuth, logger)
     → AssistantService(profileClient, txClient, agentClient, cache, metrics, logger)
-      → Router(assistantSvc, bankSvc, authSvc, metrics, logger)
+    → ChatService(client, sessions, repo, transcripts, evaluations, ctxFetcher, authStore, historyAnonymousOnly, logger)
+      → Router(assistantSvc, bankSvc, authSvc, chatSvc, chatMetrics, metrics, logger)
         → http.Server (graceful shutdown)
 ```
 
@@ -116,12 +118,25 @@ pj-assistant-bfa-go/
 │   │   ├── assistant.go         # AgentRequest/Response, AssistantRequest/Response
 │   │   ├── auth.go              # Register, Login, Refresh, Password, Credentials
 │   │   ├── billing.go           # BillPayment, BarcodeValidation, DebitPurchase
-│   │   ├── cards.go             # CreditCard, Transaction, Invoice, API responses
+│   │   ├── cards.go             # CreditCard, CardProduct catalog, Transaction, Invoice
 │   │   ├── customer.go          # CustomerProfile, User, UserCompany
 │   │   ├── devtools.go          # DevAddBalance, DevSetCreditLimit, DevGenerateTx
-│   │   ├── errors.go            # 11 error types (NotFound, Validation, InsufficientFunds...)
+│   │   ├── errors.go            # 14 error types (NotFound, Validation, InsufficientFunds...)
 │   │   ├── health.go            # HealthStatus, AgentMetrics, ListResponse[T]
 │   │   └── pix.go               # PixKey, PixTransfer, PixReceipt, ScheduledTransfer
+│   ├── chat/                    # Chat Onboarding — BFA orquestra abertura de conta PJ
+│   │   ├── client.go            # HTTP client para o Agent Python
+│   │   ├── handler.go           # POST /v1/chat, POST /v1/chat/{customerID}
+│   │   ├── service.go           # Orquestração: recebe query → chama agente → valida → responde
+│   │   ├── session.go           # SessionStore in-memory (history + onboarding data)
+│   │   ├── model.go             # Structs: AgentRequest, AgentResponse, FrontendResponse
+│   │   ├── validators.go        # Validadores por step (CNPJ, email, CPF, phone, password...)
+│   │   ├── repository.go        # Interface AccountRepository (CNPJExists, CPFExists, Finalize)
+│   │   ├── repository_supabase.go # Implementação Supabase do AccountRepository
+│   │   ├── evaluation.go        # Avaliação de respostas (feedback)
+│   │   ├── transcript.go        # Transcrição de conversas
+│   │   ├── metrics.go           # Métricas do chat (GET /v1/chat/metrics)
+│   │   └── service_test.go      # Testes unitários (validações, fluxo, cross-contamination)
 │   ├── port/                    # Interfaces (contratos)
 │   │   ├── ports.go             # BankingStore (composto), AuthStore, ProfileFetcher, Cache
 │   │   ├── account_port.go      # AccountStore
@@ -140,7 +155,7 @@ pj-assistant-bfa-go/
 │   │   ├── auth_registration.go
 │   │   ├── auth_tokens.go
 │   │   ├── billing_service.go
-│   │   ├── cards_service.go     # Cartão de crédito + fatura + pagamento
+│   │   ├── cards_service.go     # Cartão de crédito + catálogo + fatura + pagamento
 │   │   ├── devtools_service.go
 │   │   ├── pix_keys_service.go
 │   │   ├── pix_receipts_service.go
@@ -171,6 +186,7 @@ pj-assistant-bfa-go/
 │       │   ├── billing_store.go
 │       │   ├── cards_store.go
 │       │   ├── customer_lookup_store.go
+│       │   ├── onboarding_store.go  # Persistência temporária de onboarding
 │       │   ├── pix_keys_store.go
 │       │   ├── pix_receipts_store.go
 │       │   ├── pix_transfers_store.go
@@ -180,8 +196,8 @@ pj-assistant-bfa-go/
 │       ├── resilience/          # Circuit breaker (gobreaker), retry, semaphore
 │       └── observability/       # Logger (zap), Metrics (Prometheus), Tracing (OTLP)
 ├── tests/integration/           # Testes de integração end-to-end
-├── agent/                       # Agente IA em Python (RAG + LLM)
 ├── migrations/                  # SQL migrations para Supabase
+├── supabase/migrations/         # Migrations Supabase CLI
 ├── Dockerfile                   # Multi-stage build (Go 1.22 → Alpine)
 ├── docker-compose.yml           # Ambiente local completo
 ├── Makefile                     # build, test, run, lint, docker
@@ -254,6 +270,7 @@ O `supabase.Client` implementa `BankingStore`, `AuthStore`, `ProfileFetcher` e `
 | `BankingService` | `NewBankingService(store, metrics, logger)` | `BankingStore` |
 | `AuthService` | `NewAuthService(store, secret, accessTTL, refreshTTL, devAuth, logger)` | `AuthStore` |
 | `Assistant` | `NewAssistant(profile, tx, agent, cache, metrics, logger)` | `ProfileFetcher`, `TransactionsFetcher`, `AgentCaller` |
+| `chat.Service` | `NewService(client, sessions, repo, transcripts, evaluations, ctxFetcher, authStore, historyAnonymousOnly, logger)` | `AccountRepository`, `ContextFetcher`, `AuthStore` |
 
 ### Constantes de negócio
 
@@ -414,10 +431,12 @@ Cada instância de `Metrics` usa seu próprio `prometheus.Registry` (evita panic
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `GET` | `/v1/customers/{customerId}/cards` | Listar cartões |
+| `GET` | `/v1/customers/{customerId}/cards` | Listar cartões contratados |
 | `GET` | `/v1/customers/{customerId}/credit-cards` | Alias |
-| `GET` | `/v1/customers/{customerId}/credit-limit` | Consultar limite de crédito |
-| `POST` | `/v1/cards/request` | Solicitar novo cartão |
+| `GET` | `/v1/customers/{customerId}/cards/available` | Cartões disponíveis para contratação (filtrado por limite) |
+| `GET` | `/v1/customers/{customerId}/credit-cards/available` | Alias |
+| `GET` | `/v1/customers/{customerId}/credit-limit` | Consultar limite de crédito da conta |
+| `POST` | `/v1/cards/request` | Contratar cartão (envia `productId`, `requestedLimit`, `dueDay`) |
 | `POST` | `/v1/customers/{customerId}/credit-cards/request` | Alias |
 | `GET` | `/v1/cards/{cardId}/invoices/{month}` | Fatura por mês (YYYY-MM) |
 | `GET` | `/v1/customers/{customerId}/credit-cards/{cardId}/invoice` | Fatura do mês atual |
@@ -464,10 +483,39 @@ Cada instância de `Metrics` usa seu próprio `prometheus.Registry` (evita panic
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `POST` | `/v1/assistant/{customerId}` | Pergunta ao assistente |
-| `POST` | `/v1/chat` | Alias para o assistente |
+| `GET` | `/v1/assistant/{customerId}` | Consulta financeira (busca profile + transactions + agent) |
+| `POST` | `/v1/assistant/{customerId}` | Idem via body JSON |
 
 O assistente busca perfil + transações em paralelo (errgroup), envia ao agente IA e retorna resposta com metadata (tokens, fontes RAG, ferramentas usadas).
+
+</details>
+
+<details>
+<summary><strong>💬 Chat Onboarding (BFA)</strong></summary>
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/v1/chat` | Chat anônimo (abertura de conta PJ) |
+| `POST` | `/v1/chat/{customerID}` | Chat com ID de sessão/cliente |
+| `GET` | `/v1/chat/metrics` | Métricas do chat (tokens, latência, custo) |
+
+O chat é orquestrado pelo BFA:
+1. Frontend envia `query` + `is_authenticated`
+2. BFA busca contexto financeiro (se autenticado) e chama o agente Python
+3. Agente retorna `step`, `field_value`, `next_step`, `answer`
+4. BFA valida o campo (CNPJ, email, CPF, phone, password...)
+5. Se válido → salva na sessão e no Supabase, retorna `answer`
+6. Se inválido → reenvia ao agente com `validation_error`, retorna mensagem de erro
+7. No último step (`passwordConfirmation`) → finaliza cadastro e cria conta
+
+**Catálogo de produtos de cartão** (hardcoded):
+
+| Produto | Bandeira | Limite Mín | Limite Máx | Anuidade |
+|---------|----------|-----------|-----------|----------|
+| `itau-pj-basic` | Elo | R$ 500 | R$ 10.000 | R$ 0 |
+| `itau-pj-gold` | Visa | R$ 5.000 | R$ 50.000 | R$ 29,90 |
+| `itau-pj-platinum` | Mastercard | R$ 15.000 | R$ 200.000 | R$ 59,90 |
+| `itau-pj-virtual` | Visa | R$ 100 | R$ 50.000 | R$ 0 |
 
 </details>
 
@@ -593,12 +641,15 @@ O assistente busca perfil + transações em paralelo (errgroup), envia ao agente
 <details>
 <summary><strong>💳 Solicitar Cartão</strong></summary>
 
-1. Valida `account_id` (deve existir)
-2. Aplica defaults: brand=Visa, type=corporate, billingDay=10, dueDay=20, limit=10000
-3. Busca o nome real do customer (`GetCustomerName`) para `card_holder_name`
-4. Gera últimos 4 dígitos aleatórios (`UnixNano % 10000`)
-5. Cria o cartão com status `active`, `pix_credit_enabled = true`
-6. Retorna cartão com campos `cardType`, `holderName`, `brand`, `lastFourDigits`
+1. Frontend consulta `GET /v1/customers/{id}/cards/available` para ver produtos elegíveis
+2. Apenas produtos cujo `minLimit` ≤ crédito disponível são retornados
+3. Cliente escolhe `productId`, `requestedLimit` e `dueDay`
+4. BFA valida: limite dentro do range do produto E dentro do crédito disponível
+5. Busca o nome real do customer (`GetCustomerName`) para `card_holder_name`
+6. Gera últimos 4 dígitos aleatórios (`UnixNano % 10000`)
+7. Cria o cartão com status `active`, `pix_credit_enabled = true`
+8. Deduz o limite do cartão do `available_credit_limit` da conta
+9. Retorna cartão com campos `cardType`, `holderName`, `brand`, `lastFourDigits`, `approvedLimit`
 
 </details>
 
@@ -1122,13 +1173,19 @@ Essa tabela só é usada quando `DEV_AUTH=true`. **Nunca** usar em produção.
 | `USE_SUPABASE` | `true` | Se usa Supabase como backend de dados |
 | `PROFILE_API_URL` | `http://localhost:8081` | URL da API de perfil (se não usar Supabase) |
 | `TRANSACTIONS_API_URL` | `http://localhost:8082` | URL da API de transações (se não usar Supabase) |
-| `AGENT_API_URL` | `http://localhost:8090` | URL do agente IA (Python) |
+| `AGENT_API_URL` | `http://localhost:8090` | URL do agente IA (Python) — assistente financeiro |
+| `CHAT_AGENT_URL` | `https://pj-assistant-agent-py-production.up.railway.app` | URL do Agent Python para o chat onboarding |
+| `CHAT_MAX_RETRIES` | `3` | Máximo de retentativas nas chamadas ao agente de chat |
+| `CHAT_RETRY_DELAY` | `500ms` | Delay entre retries ao agente de chat |
+| `CHAT_HISTORY_ANONYMOUS_ONLY` | `true` | Se `true`, só envia histórico ao agente quando usuário não está logado |
 | `HTTP_TIMEOUT` | `10s` | Timeout para chamadas HTTP |
-| `MAX_RETRIES` | `3` | Máximo de retentativas |
+| `MAX_RETRIES` | `3` | Máximo de retentativas (circuit breaker) |
 | `INITIAL_BACKOFF` | `100ms` | Backoff inicial entre retentativas |
 | `MAX_CONCURRENCY` | `50` | Máximo de requisições concorrentes |
 | `CACHE_TTL` | `5m` | TTL do cache de perfis |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `localhost:4317` | Endpoint do collector OTLP |
+| `AXIOM_TOKEN` | — | Token para enviar logs ao Axiom |
+| `AXIOM_DATASET` | `pj-agent-logs` | Dataset no Axiom para logs |
 | `JWT_SECRET` | `bfa-default-dev-secret-change-me` | Secret para assinar JWTs |
 | `JWT_ACCESS_TTL` | `15m` | Duração do access token |
 | `JWT_REFRESH_TTL` | `168h` (7 dias) | Duração do refresh token |
@@ -1196,6 +1253,7 @@ go tool cover -html=coverage.out
 
 | Pacote | O que testa |
 |--------|-------------|
+| `internal/chat` | Validadores (CNPJ, CPF, email, phone, password, birthDate), fluxo de onboarding, cross-contamination, inline rejection, BFA override, reset |
 | `internal/handler` | Handlers HTTP (healthz, readyz, metrics) |
 | `internal/service` | AssistantService (mocks de profile, transactions, agent) |
 | `internal/infra/cache` | Cache in-memory com TTL |
