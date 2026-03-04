@@ -273,9 +273,9 @@ Exemplo:
 | `account_data` | ✅ | ✅ (sem mudança) |
 | History | `{query, answer, step, validated}` | ✅ (sem mudança) |
 
----
 
 ## 8. Checklist do Front (v11)
+
 
 - [ ] Enviar `is_authenticated: true` quando o usuário está logado, `false` caso contrário
 - [ ] Usar `context` (string) para mapear botões de jornada
