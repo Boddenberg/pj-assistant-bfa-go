@@ -203,6 +203,9 @@ func fetchAccountContext(ctx context.Context, store port.AccountStore, customerI
 		)
 		return nil
 	}
+	if acc == nil {
+		return nil
+	}
 	return &AccountContext{
 		AccountID:            acc.ID,
 		Branch:               acc.Branch,
@@ -402,6 +405,9 @@ func fetchProfileContext(ctx context.Context, store port.AuthStore, customerID s
 			zap.String("customer_id", customerID),
 			zap.Error(err),
 		)
+		return nil
+	}
+	if profile == nil {
 		return nil
 	}
 	companyName := profile.CompanyName
