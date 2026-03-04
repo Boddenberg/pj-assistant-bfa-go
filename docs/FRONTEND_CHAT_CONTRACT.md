@@ -277,6 +277,7 @@ Exemplo:
 ## 8. Checklist do Front (v11)
 
 
+
 - [ ] Enviar `is_authenticated: true` quando o usuário está logado, `false` caso contrário
 - [ ] Usar `context` (string) para mapear botões de jornada
 - [ ] Mapear cada context para um conjunto de botões (ex: `pix` → ["Fazer PIX", "Minhas chaves"])
