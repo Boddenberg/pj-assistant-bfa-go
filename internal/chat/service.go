@@ -139,7 +139,15 @@ func (s *Service) callAgent(ctx context.Context, customerID, query string, sessi
 	// Se historyAnonymousOnly=true e o usuário está logado, não envia history
 	history := session.History
 	if s.historyAnonymousOnly && isAuthenticated {
-		history = nil
+		history = []ChatMessage{} // Python espera [] e não null
+	}
+	if history == nil {
+		history = []ChatMessage{}
+	}
+
+	collectedData := session.CollectedData()
+	if collectedData == nil {
+		collectedData = []CollectedItem{}
 	}
 
 	req := AgentRequest{
@@ -147,7 +155,7 @@ func (s *Service) callAgent(ctx context.Context, customerID, query string, sessi
 		Query:            query,
 		History:          history,
 		ValidationError:  validationError,
-		CollectedData:    session.CollectedData(),
+		CollectedData:    collectedData,
 		IsAuthenticated:  isAuthenticated,
 		FinancialContext: financialCtx,
 	}

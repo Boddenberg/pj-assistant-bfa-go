@@ -164,19 +164,19 @@ func (c *Client) CreateCustomerWithAccount(ctx context.Context, req *domain.Regi
 
 	// 2. Create account — saldo inicial R$10.000
 	accountData := map[string]any{
-		"id":                      accountID,
-		"customer_id":             customerID,
-		"account_type":            "checking",
-		"account_number":          conta,
-		"branch":                  agencia,
-		"digit":                   "0",
-		"balance":                 initialBalance,
-		"available_balance":       initialBalance,
-		"overdraft_limit":         0,
-		"credit_limit":            creditCardLimit,
-		"available_credit_limit":  creditCardLimit,
-		"currency":                "BRL",
-		"status":                  "active",
+		"id":                     accountID,
+		"customer_id":            customerID,
+		"account_type":           "checking",
+		"account_number":         conta,
+		"branch":                 agencia,
+		"digit":                  "0",
+		"balance":                initialBalance,
+		"available_balance":      initialBalance,
+		"overdraft_limit":        0,
+		"credit_limit":           creditCardLimit,
+		"available_credit_limit": creditCardLimit,
+		"currency":               "BRL",
+		"status":                 "active",
 	}
 
 	_, err = c.doPost(ctx, "accounts", accountData)
