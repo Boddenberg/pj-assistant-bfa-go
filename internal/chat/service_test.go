@@ -30,7 +30,7 @@ func newTestService(agentURL string) *Service {
 	repo := NewInMemoryAccountRepository(logger)
 	transcripts := NewInMemoryTranscriptRepository(logger)
 	evaluations := NewInMemoryEvaluationRepository(logger)
-	return NewService(client, sessions, repo, transcripts, evaluations, nil, nil, logger)
+	return NewService(client, sessions, repo, transcripts, evaluations, nil, nil, true, logger)
 }
 
 var ctx = context.Background()
@@ -226,7 +226,7 @@ func TestValidatePhone_TooShort(t *testing.T) {
 func TestProcessTurn_Welcome(t *testing.T) {
 	agentResp := AgentResponse{
 		Answer:   "Olá! Vou te ajudar a abrir sua conta PJ.",
-		Context: "onboarding",
+		Context:  "onboarding",
 		Step:     strPtr("welcome"),
 		NextStep: strPtr("cnpj"),
 	}
@@ -284,7 +284,7 @@ func TestProcessTurn_InlineRejection(t *testing.T) {
 			// First call: agent rejects inline (step == next_step)
 			resp = AgentResponse{
 				Answer:   "CNPJ inválido, tente novamente.",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("cnpj"), // same → inline rejection
 			}
@@ -292,7 +292,7 @@ func TestProcessTurn_InlineRejection(t *testing.T) {
 			// Second call: BFA sends validation_error, agent formats error
 			resp = AgentResponse{
 				Answer:   "O CNPJ precisa ter 14 dígitos. Tente novamente.",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("cnpj"),
 			}
@@ -333,7 +333,7 @@ func TestProcessTurn_ValidField(t *testing.T) {
 	// Agent says: step=cnpj, next_step=razaoSocial (accepted)
 	agentResp := AgentResponse{
 		Answer:     "Ótimo! CNPJ recebido. Agora informe a Razão Social.",
-		Context: "onboarding",
+		Context:    "onboarding",
 		Step:       strPtr("cnpj"),
 		FieldValue: strPtr("12345678000190"),
 		NextStep:   strPtr("razaoSocial"),
@@ -389,7 +389,7 @@ func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 			// Agent accepted (step != next_step)
 			resp = AgentResponse{
 				Answer:   "Email recebido!",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("representanteName"),
 			}
@@ -397,7 +397,7 @@ func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 			// BFA sends validation_error, agent reformats
 			resp = AgentResponse{
 				Answer:   "O email informado é inválido. Use o formato nome@dominio.com.",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("email"),
 			}
@@ -487,42 +487,42 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 		case callCount == 1: // cnpj accepted
 			resp = AgentResponse{
 				Answer:   "CNPJ recebido. Qual a Razão Social?",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("razaoSocial"),
 			}
 		case callCount == 2: // razaoSocial accepted
 			resp = AgentResponse{
 				Answer:   "Razão Social recebida. Qual o Nome Fantasia?",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("razaoSocial"),
 				NextStep: strPtr("nomeFantasia"),
 			}
 		case callCount == 3: // nomeFantasia accepted
 			resp = AgentResponse{
 				Answer:   "Nome Fantasia recebido. Qual o email?",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("nomeFantasia"),
 				NextStep: strPtr("email"),
 			}
 		case callCount == 4: // email — agent accepts, but BFA will reject (double @)
 			resp = AgentResponse{
 				Answer:   "Email recebido.",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("representanteName"),
 			}
 		case callCount == 5: // BFA rejected email, sends validation_error
 			resp = AgentResponse{
 				Answer:   "Email inválido. Tente novamente no formato nome@dominio.com.",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("email"),
 			}
 		case callCount == 6: // valid email accepted
 			resp = AgentResponse{
 				Answer:   "Email recebido! Qual o nome do representante?",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("representanteName"),
 			}
@@ -601,7 +601,7 @@ func TestProcessTurn_CPFAsName_SavedCorrectly(t *testing.T) {
 	// Agent says step=representanteName, next_step=representanteCpf
 	agentResp := AgentResponse{
 		Answer:   "Nome recebido. Agora informe o CPF.",
-		Context: "onboarding",
+		Context:  "onboarding",
 		Step:     strPtr("representanteName"),
 		NextStep: strPtr("representanteCpf"),
 	}
@@ -648,7 +648,7 @@ func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 			// Agent rejects inline: step == next_step
 			resp = AgentResponse{
 				Answer:   "CNPJ parece inválido.",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("cnpj"),
 			}
@@ -656,7 +656,7 @@ func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 			// BFA saved and re-called agent → agent now advances
 			resp = AgentResponse{
 				Answer:   "CNPJ aceito! Qual a Razão Social?",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("razaoSocial"),
 			}
@@ -709,7 +709,7 @@ func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 			// This happens when agent sees retry history and thinks it's still wrong
 			resp = AgentResponse{
 				Answer:   "Razão Social inválida.",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("razaoSocial"),
 				NextStep: strPtr("razaoSocial"),
 			}
@@ -733,7 +733,7 @@ func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 			// Agent sees razaoSocial in collected_data, advances to nomeFantasia
 			resp = AgentResponse{
 				Answer:   "Razão Social recebida! Qual o Nome Fantasia?",
-				Context: "onboarding",
+				Context:  "onboarding",
 				Step:     strPtr("razaoSocial"),
 				NextStep: strPtr("nomeFantasia"),
 			}
@@ -829,7 +829,7 @@ func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
 		// Agent always rejects inline (step == next_step)
 		resp := AgentResponse{
 			Answer:   "Telefone inválido.",
-			Context: "onboarding",
+			Context:  "onboarding",
 			Step:     strPtr("representantePhone"),
 			NextStep: strPtr("representantePhone"),
 		}
@@ -876,7 +876,7 @@ func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
 func TestProcessTurn_AgentResetStep(t *testing.T) {
 	server := mockAgentServer(AgentResponse{
 		Answer:   "Vamos recomeçar do zero!",
-		Context: "onboarding",
+		Context:  "onboarding",
 		Step:     strPtr("reset"),
 		NextStep: strPtr("reset"),
 	})

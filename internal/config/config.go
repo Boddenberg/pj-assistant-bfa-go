@@ -52,6 +52,9 @@ type Config struct {
 
 	// Dev mode
 	DevAuth bool // DEV_AUTH=true bypasses bcrypt, uses dev_logins table
+
+	// Chat behavior
+	ChatHistoryAnonymousOnly bool // CHAT_HISTORY_ANONYMOUS_ONLY=true → só envia history se não estiver logado
 }
 
 // Load reads configuration from environment variables with defaults.
@@ -90,6 +93,8 @@ func Load() *Config {
 		JWTRefreshTTL: getEnvDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
 
 		DevAuth: getEnv("DEV_AUTH", "false") == "true",
+
+		ChatHistoryAnonymousOnly: getEnv("CHAT_HISTORY_ANONYMOUS_ONLY", "true") == "true",
 	}
 }
 

@@ -20,28 +20,30 @@ import (
 //     salva no banco, e faz pass-through da resposta do agente para o frontend.
 //   - O BFA NÃO sabe a jornada, NÃO controla a sequência, NÃO sobrescreve step/next_step.
 type Service struct {
-	client      *Client
-	sessions    *SessionStore
-	validators  ValidatorRegistry
-	repo        AccountRepository
-	transcripts TranscriptRepository
-	evaluations EvaluationRepository
-	ctxFetcher  ContextFetcher // dados financeiros (pode ser nil)
-	authStore   port.AuthStore // perfil do cliente (pode ser nil)
-	logger      *zap.Logger
+	client               *Client
+	sessions             *SessionStore
+	validators           ValidatorRegistry
+	repo                 AccountRepository
+	transcripts          TranscriptRepository
+	evaluations          EvaluationRepository
+	ctxFetcher           ContextFetcher // dados financeiros (pode ser nil)
+	authStore            port.AuthStore // perfil do cliente (pode ser nil)
+	historyAnonymousOnly bool           // se true, só envia history para usuários não-logados
+	logger               *zap.Logger
 }
 
-func NewService(client *Client, sessions *SessionStore, repo AccountRepository, transcripts TranscriptRepository, evaluations EvaluationRepository, ctxFetcher ContextFetcher, authStore port.AuthStore, logger *zap.Logger) *Service {
+func NewService(client *Client, sessions *SessionStore, repo AccountRepository, transcripts TranscriptRepository, evaluations EvaluationRepository, ctxFetcher ContextFetcher, authStore port.AuthStore, historyAnonymousOnly bool, logger *zap.Logger) *Service {
 	return &Service{
-		client:      client,
-		sessions:    sessions,
-		validators:  NewValidatorRegistry(repo),
-		repo:        repo,
-		transcripts: transcripts,
-		evaluations: evaluations,
-		ctxFetcher:  ctxFetcher,
-		authStore:   authStore,
-		logger:      logger,
+		client:               client,
+		sessions:             sessions,
+		validators:           NewValidatorRegistry(repo),
+		repo:                 repo,
+		transcripts:          transcripts,
+		evaluations:          evaluations,
+		ctxFetcher:           ctxFetcher,
+		authStore:            authStore,
+		historyAnonymousOnly: historyAnonymousOnly,
+		logger:               logger,
 	}
 }
 
@@ -134,10 +136,16 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string, isA
 
 // callAgent monta o AgentRequest e chama o Agent Python.
 func (s *Service) callAgent(ctx context.Context, customerID, query string, session *Session, validationError string, financialCtx *FinancialContext, isAuthenticated bool) (*AgentResponse, error) {
+	// Se historyAnonymousOnly=true e o usuário está logado, não envia history
+	history := session.History
+	if s.historyAnonymousOnly && isAuthenticated {
+		history = nil
+	}
+
 	req := AgentRequest{
 		CustomerID:       customerID,
 		Query:            query,
-		History:          session.History,
+		History:          history,
 		ValidationError:  validationError,
 		CollectedData:    session.CollectedData(),
 		IsAuthenticated:  isAuthenticated,

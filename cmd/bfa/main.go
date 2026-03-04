@@ -149,8 +149,11 @@ func main() {
 		chatMetrics = chat.NewInMemoryMetricsRepository(logger)
 		logger.Warn("chat using in-memory repository (Supabase not configured)")
 	}
-	chatSvc := chat.NewService(chatClient, chatSessions, chatRepo, chatTranscripts, chatEvaluations, chatCtxFetcher, chatAuthStore, logger)
-	logger.Info("chat service enabled", zap.String("agent_url", cfg.ChatAgentURL))
+	chatSvc := chat.NewService(chatClient, chatSessions, chatRepo, chatTranscripts, chatEvaluations, chatCtxFetcher, chatAuthStore, cfg.ChatHistoryAnonymousOnly, logger)
+	logger.Info("chat service enabled",
+		zap.String("agent_url", cfg.ChatAgentURL),
+		zap.Bool("history_anonymous_only", cfg.ChatHistoryAnonymousOnly),
+	)
 
 	/* Router */
 	router := handler.NewRouter(assistantSvc, bankSvc, authSvc, chatSvc, chatMetrics, metrics, logger)
