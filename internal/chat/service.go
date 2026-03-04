@@ -52,6 +52,12 @@ func NewService(client *Client, sessions *SessionStore, repo AccountRepository, 
 func (s *Service) ProcessTurn(ctx context.Context, customerID, query string, isAuthenticated bool) (*FrontendResponse, error) {
 	bfaStart := time.Now() // ⏱ medir latência total do BFA
 
+	s.logger.Info("📥 ProcessTurn — entrada",
+		zap.String("customer_id", customerID),
+		zap.String("query", query),
+		zap.Bool("is_authenticated", isAuthenticated),
+	)
+
 	if customerID == "" {
 		customerID = "anonymous"
 	}
@@ -79,6 +85,16 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string, isA
 
 	// ── Chamada única ao agente — com tudo ──
 	start := time.Now()
+
+	s.logger.Info("📤 chamando agente Python",
+		zap.String("customer_id", customerID),
+		zap.String("query", query),
+		zap.Bool("is_authenticated", isAuthenticated),
+		zap.Bool("has_financial_ctx", financialCtx != nil),
+		zap.Int("history_len", len(session.History)),
+		zap.Int("collected_data_len", len(session.OnboardingData)),
+	)
+
 	agentResp, err := s.callAgent(ctx, customerID, query, session, "", financialCtx, isAuthenticated)
 	latencyMs := time.Since(start).Milliseconds()
 	if err != nil {
@@ -98,6 +114,15 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string, isA
 	}
 
 	// 2. Processar resposta do agente — BFA apenas valida o campo
+	s.logger.Info("📨 resposta do agente recebida — processando",
+		zap.String("customer_id", customerID),
+		zap.String("answer", truncateStr(agentResp.Answer, 150)),
+		zap.Any("step", agentResp.Step),
+		zap.Any("next_step", agentResp.NextStep),
+		zap.String("context", agentResp.Context),
+		zap.Any("field_value", agentResp.FieldValue),
+		zap.Float64("confidence", agentResp.Confidence),
+	)
 	frontResp, procErr := s.processAgentResponse(ctx, customerID, query, session, agentResp, financialCtx, isAuthenticated)
 
 	// Salvar transcrição de forma assíncrona (LLM-as-Judge) — mede latência total do BFA
@@ -133,23 +158,42 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 	step := derefStr(resp.Step)
 	nextStep := derefStr(resp.NextStep)
 
+	s.logger.Info("🧠 processAgentResponse — entrada",
+		zap.String("customer_id", customerID),
+		zap.String("query", query),
+		zap.Bool("is_authenticated", isAuthenticated),
+		zap.String("step", step),
+		zap.String("next_step", nextStep),
+		zap.String("context", resp.Context),
+		zap.String("answer", truncateStr(resp.Answer, 100)),
+		zap.Any("field_value", resp.FieldValue),
+	)
+
+	// Caso 1: step vazio → conversa normal, não é onboarding
+	// Mesmo que context == "onboarding", se step está vazio o agente está
+	// apenas respondendo uma pergunta genérica — pass-through.
+	if step == "" {
+		s.logger.Info("➡️  step vazio — pass-through conversa normal",
+			zap.String("customer_id", customerID),
+		)
+		s.appendHistory(session, query, resp.Answer, nil, nil)
+		return s.buildResponse(resp, nil), nil
+	}
+
 	// Guarda: bloquear onboarding para usuários autenticados.
 	// Abertura de conta só pode acontecer no endpoint anônimo (POST /v1/chat).
-	// O frontend informa se o usuário está logado via is_authenticated no body.
-	if isAuthenticated && (resp.Context == "onboarding" || step == "welcome") {
+	// Só bloqueia quando o agente de fato inicia um fluxo (step == welcome ou campo de onboarding).
+	if isAuthenticated && (step == "welcome" || resp.Context == "onboarding") {
 		s.logger.Warn("⛔ onboarding bloqueado — usuário já autenticado",
 			zap.String("customer_id", customerID),
+			zap.String("step", step),
+			zap.String("context", resp.Context),
+			zap.Bool("is_authenticated", isAuthenticated),
 		)
 		return &FrontendResponse{
 			Answer:  "Você já possui uma conta ativa. Posso ajudar com outra coisa?",
 			Context: "geral",
 		}, nil
-	}
-
-	// Caso 1: step vazio → conversa normal, não é onboarding
-	if step == "" {
-		s.appendHistory(session, query, resp.Answer, nil, nil)
-		return s.buildResponse(resp, nil), nil
 	}
 
 	// Caso 2: welcome → boas-vindas do agente, pass-through
