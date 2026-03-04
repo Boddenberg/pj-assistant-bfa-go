@@ -226,7 +226,7 @@ func TestValidatePhone_TooShort(t *testing.T) {
 func TestProcessTurn_Welcome(t *testing.T) {
 	agentResp := AgentResponse{
 		Answer:   "Olá! Vou te ajudar a abrir sua conta PJ.",
-		Context:  strPtr("onboarding"),
+		Context: "onboarding",
 		Step:     strPtr("welcome"),
 		NextStep: strPtr("cnpj"),
 	}
@@ -234,7 +234,7 @@ func TestProcessTurn_Welcome(t *testing.T) {
 	defer server.Close()
 
 	svc := newTestService(server.URL)
-	resp, err := svc.ProcessTurn(context.Background(), "cust-1", "Quero abrir conta PJ")
+	resp, err := svc.ProcessTurn(context.Background(), "cust-1", "Quero abrir conta PJ", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestProcessTurn_InlineRejection(t *testing.T) {
 			// First call: agent rejects inline (step == next_step)
 			resp = AgentResponse{
 				Answer:   "CNPJ inválido, tente novamente.",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("cnpj"), // same → inline rejection
 			}
@@ -292,7 +292,7 @@ func TestProcessTurn_InlineRejection(t *testing.T) {
 			// Second call: BFA sends validation_error, agent formats error
 			resp = AgentResponse{
 				Answer:   "O CNPJ precisa ter 14 dígitos. Tente novamente.",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("cnpj"),
 			}
@@ -304,7 +304,7 @@ func TestProcessTurn_InlineRejection(t *testing.T) {
 
 	svc := newTestService(server.URL)
 
-	resp, err := svc.ProcessTurn(context.Background(), "cust-2", "123")
+	resp, err := svc.ProcessTurn(context.Background(), "cust-2", "123", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestProcessTurn_ValidField(t *testing.T) {
 	// Agent says: step=cnpj, next_step=razaoSocial (accepted)
 	agentResp := AgentResponse{
 		Answer:     "Ótimo! CNPJ recebido. Agora informe a Razão Social.",
-		Context:    strPtr("onboarding"),
+		Context: "onboarding",
 		Step:       strPtr("cnpj"),
 		FieldValue: strPtr("12345678000190"),
 		NextStep:   strPtr("razaoSocial"),
@@ -343,7 +343,7 @@ func TestProcessTurn_ValidField(t *testing.T) {
 
 	svc := newTestService(server.URL)
 
-	resp, err := svc.ProcessTurn(context.Background(), "cust-3", "12345678000190")
+	resp, err := svc.ProcessTurn(context.Background(), "cust-3", "12345678000190", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 			// Agent accepted (step != next_step)
 			resp = AgentResponse{
 				Answer:   "Email recebido!",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("representanteName"),
 			}
@@ -397,7 +397,7 @@ func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 			// BFA sends validation_error, agent reformats
 			resp = AgentResponse{
 				Answer:   "O email informado é inválido. Use o formato nome@dominio.com.",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("email"),
 			}
@@ -409,7 +409,7 @@ func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 
 	svc := newTestService(server.URL)
 
-	resp, err := svc.ProcessTurn(context.Background(), "cust-email", "not-an-email")
+	resp, err := svc.ProcessTurn(context.Background(), "cust-email", "not-an-email", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -435,14 +435,14 @@ func TestProcessTurn_AgentAcceptedBFARejected(t *testing.T) {
 func TestProcessTurn_NullStep(t *testing.T) {
 	agentResp := AgentResponse{
 		Answer:  "Posso ajudar com informações sobre contas PJ.",
-		Context: nil,
+		Context: "",
 		Step:    nil,
 	}
 	server := mockAgentServer(agentResp)
 	defer server.Close()
 
 	svc := newTestService(server.URL)
-	resp, err := svc.ProcessTurn(context.Background(), "cust-4", "O que vocês oferecem?")
+	resp, err := svc.ProcessTurn(context.Background(), "cust-4", "O que vocês oferecem?", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -487,47 +487,47 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 		case callCount == 1: // cnpj accepted
 			resp = AgentResponse{
 				Answer:   "CNPJ recebido. Qual a Razão Social?",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("razaoSocial"),
 			}
 		case callCount == 2: // razaoSocial accepted
 			resp = AgentResponse{
 				Answer:   "Razão Social recebida. Qual o Nome Fantasia?",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("razaoSocial"),
 				NextStep: strPtr("nomeFantasia"),
 			}
 		case callCount == 3: // nomeFantasia accepted
 			resp = AgentResponse{
 				Answer:   "Nome Fantasia recebido. Qual o email?",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("nomeFantasia"),
 				NextStep: strPtr("email"),
 			}
 		case callCount == 4: // email — agent accepts, but BFA will reject (double @)
 			resp = AgentResponse{
 				Answer:   "Email recebido.",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("representanteName"),
 			}
 		case callCount == 5: // BFA rejected email, sends validation_error
 			resp = AgentResponse{
 				Answer:   "Email inválido. Tente novamente no formato nome@dominio.com.",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("email"),
 			}
 		case callCount == 6: // valid email accepted
 			resp = AgentResponse{
 				Answer:   "Email recebido! Qual o nome do representante?",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("email"),
 				NextStep: strPtr("representanteName"),
 			}
 		default:
-			resp = AgentResponse{Answer: "OK", Context: strPtr("onboarding")}
+			resp = AgentResponse{Answer: "OK", Context: "onboarding"}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -538,7 +538,7 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 	svc := newTestService(server.URL)
 
 	// Step 1: Valid CNPJ — agent says step=cnpj, next_step=razaoSocial
-	_, err := svc.ProcessTurn(context.Background(), "cust-flow", "12.345.678/0001-90")
+	_, err := svc.ProcessTurn(context.Background(), "cust-flow", "12.345.678/0001-90", false)
 	if err != nil {
 		t.Fatalf("cnpj turn failed: %v", err)
 	}
@@ -548,7 +548,7 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 	}
 
 	// Step 2: Valid razaoSocial — agent says step=razaoSocial, next_step=nomeFantasia
-	_, err = svc.ProcessTurn(context.Background(), "cust-flow", "Empresa Teste LTDA")
+	_, err = svc.ProcessTurn(context.Background(), "cust-flow", "Empresa Teste LTDA", false)
 	if err != nil {
 		t.Fatalf("razaoSocial turn failed: %v", err)
 	}
@@ -557,7 +557,7 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 	}
 
 	// Step 3: nomeFantasia — "filipe@filipe@cilipe" is valid (min 2 chars)
-	_, err = svc.ProcessTurn(context.Background(), "cust-flow", "filipe@filipe@cilipe")
+	_, err = svc.ProcessTurn(context.Background(), "cust-flow", "filipe@filipe@cilipe", false)
 	if err != nil {
 		t.Fatalf("nomeFantasia turn failed: %v", err)
 	}
@@ -566,7 +566,7 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 	}
 
 	// Step 4: email — "filipe@filipe@cilipe" → agent accepts but BFA rejects (double @)
-	_, err = svc.ProcessTurn(context.Background(), "cust-flow", "filipe@filipe@cilipe")
+	_, err = svc.ProcessTurn(context.Background(), "cust-flow", "filipe@filipe@cilipe", false)
 	if err != nil {
 		t.Fatalf("email rejection turn failed: %v", err)
 	}
@@ -575,7 +575,7 @@ func TestProcessTurn_FullOnboarding_NoCrossContamination(t *testing.T) {
 	}
 
 	// Step 5: valid email
-	_, err = svc.ProcessTurn(context.Background(), "cust-flow", "filipe@filipe.com")
+	_, err = svc.ProcessTurn(context.Background(), "cust-flow", "filipe@filipe.com", false)
 	if err != nil {
 		t.Fatalf("email valid turn failed: %v", err)
 	}
@@ -601,7 +601,7 @@ func TestProcessTurn_CPFAsName_SavedCorrectly(t *testing.T) {
 	// Agent says step=representanteName, next_step=representanteCpf
 	agentResp := AgentResponse{
 		Answer:   "Nome recebido. Agora informe o CPF.",
-		Context:  strPtr("onboarding"),
+		Context: "onboarding",
 		Step:     strPtr("representanteName"),
 		NextStep: strPtr("representanteCpf"),
 	}
@@ -611,7 +611,7 @@ func TestProcessTurn_CPFAsName_SavedCorrectly(t *testing.T) {
 	svc := newTestService(server.URL)
 
 	// "072.187.010-4" has >= 3 chars so passes minLen(3) for representanteName
-	_, err := svc.ProcessTurn(context.Background(), "cust-cpf", "072.187.010-4")
+	_, err := svc.ProcessTurn(context.Background(), "cust-cpf", "072.187.010-4", false)
 	if err != nil {
 		t.Fatalf("turn failed: %v", err)
 	}
@@ -648,7 +648,7 @@ func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 			// Agent rejects inline: step == next_step
 			resp = AgentResponse{
 				Answer:   "CNPJ parece inválido.",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("cnpj"),
 			}
@@ -656,7 +656,7 @@ func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 			// BFA saved and re-called agent → agent now advances
 			resp = AgentResponse{
 				Answer:   "CNPJ aceito! Qual a Razão Social?",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("cnpj"),
 				NextStep: strPtr("razaoSocial"),
 			}
@@ -668,7 +668,7 @@ func TestProcessTurn_InlineRejection_BFAAccepts(t *testing.T) {
 
 	svc := newTestService(server.URL)
 
-	resp, err := svc.ProcessTurn(context.Background(), "cust-override", "12345678000190")
+	resp, err := svc.ProcessTurn(context.Background(), "cust-override", "12345678000190", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -709,7 +709,7 @@ func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 			// This happens when agent sees retry history and thinks it's still wrong
 			resp = AgentResponse{
 				Answer:   "Razão Social inválida.",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("razaoSocial"),
 				NextStep: strPtr("razaoSocial"),
 			}
@@ -733,12 +733,12 @@ func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 			// Agent sees razaoSocial in collected_data, advances to nomeFantasia
 			resp = AgentResponse{
 				Answer:   "Razão Social recebida! Qual o Nome Fantasia?",
-				Context:  strPtr("onboarding"),
+				Context: "onboarding",
 				Step:     strPtr("razaoSocial"),
 				NextStep: strPtr("nomeFantasia"),
 			}
 		default:
-			resp = AgentResponse{Answer: "OK", Context: strPtr("onboarding")}
+			resp = AgentResponse{Answer: "OK", Context: "onboarding"}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -751,7 +751,7 @@ func TestProcessTurn_BFAOverride_NoQueryLeak(t *testing.T) {
 	session := svc.sessions.Get("cust-leak")
 	session.OnboardingData["cnpj"] = "38535631000199"
 
-	resp, err := svc.ProcessTurn(context.Background(), "cust-leak", "adbsasd")
+	resp, err := svc.ProcessTurn(context.Background(), "cust-leak", "adbsasd", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -829,7 +829,7 @@ func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
 		// Agent always rejects inline (step == next_step)
 		resp := AgentResponse{
 			Answer:   "Telefone inválido.",
-			Context:  strPtr("onboarding"),
+			Context: "onboarding",
 			Step:     strPtr("representantePhone"),
 			NextStep: strPtr("representantePhone"),
 		}
@@ -848,7 +848,7 @@ func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
 	var resp *FrontendResponse
 	var err error
 	for i := 0; i < 3; i++ {
-		resp, err = svc.ProcessTurn(context.Background(), "cust-reset", "abc")
+		resp, err = svc.ProcessTurn(context.Background(), "cust-reset", "abc", false)
 		if err != nil {
 			t.Fatalf("unexpected error on attempt %d: %v", i+1, err)
 		}
@@ -876,7 +876,7 @@ func TestProcessTurn_MaxRetries_Reset(t *testing.T) {
 func TestProcessTurn_AgentResetStep(t *testing.T) {
 	server := mockAgentServer(AgentResponse{
 		Answer:   "Vamos recomeçar do zero!",
-		Context:  strPtr("onboarding"),
+		Context: "onboarding",
 		Step:     strPtr("reset"),
 		NextStep: strPtr("reset"),
 	})
@@ -887,7 +887,7 @@ func TestProcessTurn_AgentResetStep(t *testing.T) {
 	session.OnboardingData["cnpj"] = "38535631000199"
 	session.OnboardingData["razaoSocial"] = "Empresa Y"
 
-	resp, err := svc.ProcessTurn(context.Background(), "cust-agent-reset", "resetar")
+	resp, err := svc.ProcessTurn(context.Background(), "cust-agent-reset", "resetar", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

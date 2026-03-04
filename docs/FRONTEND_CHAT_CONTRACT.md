@@ -1,8 +1,8 @@
-# Frontend — Contrato do Chat v9.0.0
+# Frontend — Contrato do Chat v11.0.0
 
 > Guia para integração do chat com onboarding no frontend React/Next.js.
 >
-> **Breaking changes vs v8:** `current_field` → `step` + `next_step`, history enriquecido com `step`/`validated`.
+> **Breaking changes vs v10:** Request agora inclui `is_authenticated` (bool) — o frontend informa se o usuário está logado.
 
 ---
 
@@ -20,6 +20,7 @@ POST /v1/chat/{customerId} → cliente autenticado
 ```json
 {
   "query": "Quero abrir minha conta PJ",
+  "is_authenticated": false,
   "history": [
     {
       "query": "Olá",
@@ -32,8 +33,9 @@ POST /v1/chat/{customerId} → cliente autenticado
 ```
 
 | Campo | Tipo | Obrigatório | Descrição |
-|-------|------|-------------|-----------|
+|-------|------|-------------|----------|
 | `query` | `string` | ✅ | Mensagem do usuário |
+| `is_authenticated` | `bool` | ✅ | `true` se o usuário está logado, `false` se anônimo |
 | `history` | `HistoryEntry[]` | ❌ | Últimas mensagens da conversa (máx 5 são usadas) |
 
 ### HistoryEntry (v9 — enriquecido)
@@ -57,18 +59,48 @@ interface HistoryEntry {
 ```typescript
 interface ChatResponse {
   answer: string;                    // Mensagem para exibir ao usuário
-  context: string | null;            // "onboarding" | "pix" | "general" | ...
-  intent: string | null;             // "open_account" | "pix_transfer" | ...
-  confidence: number;                // 0.0 a 1.0
-
-  // ✨ v9.0.0
+  context: string;                   // Contexto detectado — usar para botões de jornada
   step: string | null;               // Qual campo do onboarding está sendo tratado
-  field_value: string | null;        // Valor extraído da resposta do usuário
   next_step: string | null;          // Próximo campo que será pedido
-
   account_data: AccountData | null;  // Dados da conta criada (só quando step="completed")
-  suggested_actions: string[];       // Sugestões de ações
 }
+```
+
+### Context (v10 — string)
+
+O campo `context` é uma string que indica a jornada/assunto que o agente identificou na mensagem do cliente. O frontend pode usar para:
+
+1. **Renderizar botões de ação rápida** ("Fazer PIX", "Ver fatura", etc)
+2. **Destacar áreas do app** relevantes
+3. **Sugerir jornadas** quando o cliente fala algo genérico
+
+#### Valores possíveis de context
+
+| Context | Descrição | Botão sugerido |
+|---------|-----------|----------------|
+| `onboarding` | Abertura de conta PJ | "Abrir conta" |
+| `conta_corrente` | Saldo, extrato, dados da conta | "Ver saldo" |
+| `pix` | Transferências PIX, chaves, comprovantes | "Fazer PIX" |
+| `pix_agendamento` | Agendamento de PIX | "Agendar PIX" |
+| `cartao_credito` | Cartões, limites, bloqueio | "Meus cartões" |
+| `fatura` | Fatura do cartão, pagamento | "Ver fatura" |
+| `boletos` | Pagamento de boletos | "Pagar boleto" |
+| `debito` | Compras no débito | — |
+| `perfil` | Dados cadastrais, senha | "Meu perfil" |
+| `analytics` | Resumo financeiro, orçamentos | "Resumo financeiro" |
+| `geral` | Assunto genérico / saudaudocão | — |
+
+#### Exemplo de uso no frontend
+
+```tsx
+{data.context && (
+  <div className="context-buttons">
+    <button onClick={() => handleContextAction(data.context)}>
+      {CONTEXT_LABELS[data.context]}
+    </button>
+  </div>
+)}
+```
 
 interface AccountData {
   customerId: string;   // UUID do cliente criado
@@ -77,13 +109,12 @@ interface AccountData {
 }
 ```
 
-### Mudanças v8 → v9
+### Mudanças v10 → v11
 
-| v8 | v9 | Descrição |
-|----|-----|-----------|
-| `current_field` | `step` | Renomeado |
-| _(não existia)_ | `next_step` | Indica qual campo vem depois |
-| `history[].query/answer` | `history[].query/answer/step/validated` | History enriquecido |
+| v10 | v11 | Descrição |
+|----|-----|----------|
+| _(não existia)_ | `is_authenticated: bool` | Frontend informa se o usuário está logado no request |
+| Guarda onboarding por `financialCtx` | Guarda por `is_authenticated` | BFA usa o campo do frontend para bloquear onboarding |
 
 ---
 
@@ -231,28 +262,25 @@ Exemplo:
 
 ---
 
-## 7. Resumo das Mudanças v8 → v9
+## 7. Resumo das Mudanças v10 → v11
 
-| O que | v8 | v9 |
+| O que | v10 | v11 |
 |-------|-----|-----|
-| Campo de rastreio | `current_field` | `step` |
-| Próximo campo | _(não existia)_ | `next_step` |
-| History entries | `{query, answer}` | `{query, answer, step, validated}` |
+| Request body | `{query, history}` | `{query, is_authenticated, history}` |
+| Guarda onboarding | Baseada em `financialCtx` | Baseada em `is_authenticated` do request |
+| Contexto | `context: string` | ✅ (sem mudança) |
+| `step` / `next_step` | ✅ | ✅ (sem mudança) |
 | `account_data` | ✅ | ✅ (sem mudança) |
-| Request body | `{query, history}` | `{query, history}` (sem mudança, mas history agora é enriquecido) |
-| `answer` | Texto livre | **Sem mudança** — sempre contém a mensagem para o usuário |
-| Registro | Automático pelo chat | **Sem mudança** |
+| History | `{query, answer, step, validated}` | ✅ (sem mudança) |
 
 ---
 
-## 8. Checklist do Front (v9)
+## 8. Checklist do Front (v11)
 
-- [ ] Renomear `current_field` → `step` em todos os tipos e lógica
-- [ ] Adicionar `next_step` ao tipo `ChatResponse`
-- [ ] Atualizar `HistoryEntry` com `step: string | null` e `validated: boolean | null`
-- [ ] Persistir `step`/`validated` no history e reenviar no próximo request
+- [ ] Enviar `is_authenticated: true` quando o usuário está logado, `false` caso contrário
+- [ ] Usar `context` (string) para mapear botões de jornada
+- [ ] Mapear cada context para um conjunto de botões (ex: `pix` → ["Fazer PIX", "Minhas chaves"])
+- [ ] Quando `context` vazio → nenhum botão extra (conversa normal)
 - [ ] Quando `step === "completed"` + `account_data` → exibir tela de sucesso
 - [ ] Quando `step === "password"` ou `"passwordConfirmation"` → input type=password
-- [ ] Quando `step === "error"` → exibir alerta de erro
 - [ ] (Opcional) Barra de progresso baseada no `step`
-- [ ] (Opcional) Usar `next_step` para pré-carregar labels/ícones do próximo campo

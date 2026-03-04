@@ -47,6 +47,8 @@ func (c *Client) Send(ctx context.Context, req AgentRequest) (*AgentResponse, er
 		zap.String("query", req.Query),
 		zap.Int("history_len", len(req.History)),
 		zap.String("validation_error", req.ValidationError),
+		zap.Bool("has_financial_context", req.FinancialContext != nil),
+		zap.String("request_body", string(body)),
 	)
 
 	var lastErr error
@@ -129,11 +131,7 @@ func (c *Client) Send(ctx context.Context, req AgentRequest) (*AgentResponse, er
 
 		c.logger.Info("⬅️  response recebida do agente Python",
 			zap.Duration("latency", latency),
-			zap.String("answer", truncateStr(agentResp.Answer, 120)),
-			zap.Any("step", agentResp.Step),
-			zap.Any("field_value", agentResp.FieldValue),
-			zap.Any("next_step", agentResp.NextStep),
-			zap.Any("context", agentResp.Context),
+			zap.String("raw_body", string(rawBody)),
 		)
 
 		return &agentResp, nil

@@ -20,15 +20,15 @@ import (
 //     salva no banco, e faz pass-through da resposta do agente para o frontend.
 //   - O BFA NÃO sabe a jornada, NÃO controla a sequência, NÃO sobrescreve step/next_step.
 type Service struct {
-	client       *Client
-	sessions     *SessionStore
-	validators   ValidatorRegistry
-	repo         AccountRepository
-	transcripts  TranscriptRepository
-	evaluations  EvaluationRepository
-	ctxFetcher   ContextFetcher   // dados financeiros (pode ser nil)
-	authStore    port.AuthStore   // perfil do cliente (pode ser nil)
-	logger       *zap.Logger
+	client      *Client
+	sessions    *SessionStore
+	validators  ValidatorRegistry
+	repo        AccountRepository
+	transcripts TranscriptRepository
+	evaluations EvaluationRepository
+	ctxFetcher  ContextFetcher // dados financeiros (pode ser nil)
+	authStore   port.AuthStore // perfil do cliente (pode ser nil)
+	logger      *zap.Logger
 }
 
 func NewService(client *Client, sessions *SessionStore, repo AccountRepository, transcripts TranscriptRepository, evaluations EvaluationRepository, ctxFetcher ContextFetcher, authStore port.AuthStore, logger *zap.Logger) *Service {
@@ -46,7 +46,10 @@ func NewService(client *Client, sessions *SessionStore, repo AccountRepository, 
 }
 
 // ProcessTurn executa um turno completo da conversa.
-func (s *Service) ProcessTurn(ctx context.Context, customerID, query string) (*FrontendResponse, error) {
+//
+// Fluxo simples: busca TODOS os dados financeiros e manda tudo pro agente em uma única chamada.
+// Para anônimos: chamada sem contexto financeiro.
+func (s *Service) ProcessTurn(ctx context.Context, customerID, query string, isAuthenticated bool) (*FrontendResponse, error) {
 	bfaStart := time.Now() // ⏱ medir latência total do BFA
 
 	if customerID == "" {
@@ -68,25 +71,34 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string) (*F
 		}
 	}
 
-	// Buscar contexto financeiro para usuários autenticados (não-anônimos)
+	// ── Buscar contexto financeiro completo (se autenticado) ──
 	var financialCtx *FinancialContext
 	if customerID != "anonymous" && s.ctxFetcher != nil {
 		financialCtx = BuildFinancialContext(ctx, s.ctxFetcher, s.authStore, customerID, s.logger)
 	}
 
-	// 1. Chamar agente — ele decide o que fazer
+	// ── Chamada única ao agente — com tudo ──
 	start := time.Now()
-	agentResp, err := s.callAgent(ctx, customerID, query, session, "", financialCtx)
+	agentResp, err := s.callAgent(ctx, customerID, query, session, "", financialCtx, isAuthenticated)
 	latencyMs := time.Since(start).Milliseconds()
 	if err != nil {
 		bfaLatencyMs := time.Since(bfaStart).Milliseconds()
-		// Salvar transcrição de erro
-		s.saveTranscriptAsync(customerID, query, &AgentResponse{Answer: err.Error()}, latencyMs, bfaLatencyMs, true, financialCtx)
-		return nil, fmt.Errorf("agent call failed: %w", err)
+		s.saveTranscriptAsync(customerID, query, &AgentResponse{Answer: err.Error()}, latencyMs, bfaLatencyMs, true, nil)
+
+		s.logger.Warn("⚠️  fallback ativado — agente indisponível",
+			zap.String("customer_id", customerID),
+			zap.Int64("latency_ms", latencyMs),
+			zap.Error(err),
+		)
+
+		return &FrontendResponse{
+			Answer:  "Parece que tivemos uma lentidão no momento. Você poderia repetir sua pergunta?",
+			Context: "",
+		}, nil
 	}
 
 	// 2. Processar resposta do agente — BFA apenas valida o campo
-	frontResp, procErr := s.processAgentResponse(ctx, customerID, query, session, agentResp, financialCtx)
+	frontResp, procErr := s.processAgentResponse(ctx, customerID, query, session, agentResp, financialCtx, isAuthenticated)
 
 	// Salvar transcrição de forma assíncrona (LLM-as-Judge) — mede latência total do BFA
 	bfaLatencyMs := time.Since(bfaStart).Milliseconds()
@@ -96,13 +108,14 @@ func (s *Service) ProcessTurn(ctx context.Context, customerID, query string) (*F
 }
 
 // callAgent monta o AgentRequest e chama o Agent Python.
-func (s *Service) callAgent(ctx context.Context, customerID, query string, session *Session, validationError string, financialCtx *FinancialContext) (*AgentResponse, error) {
+func (s *Service) callAgent(ctx context.Context, customerID, query string, session *Session, validationError string, financialCtx *FinancialContext, isAuthenticated bool) (*AgentResponse, error) {
 	req := AgentRequest{
 		CustomerID:       customerID,
 		Query:            query,
 		History:          session.History,
 		ValidationError:  validationError,
 		CollectedData:    session.CollectedData(),
+		IsAuthenticated:  isAuthenticated,
 		FinancialContext: financialCtx,
 	}
 
@@ -116,9 +129,22 @@ func (s *Service) callAgent(ctx context.Context, customerID, query string, sessi
 // - Se step != next_step → agente aceitou, BFA valida e salva.
 // - Se step vazio / welcome → pass-through.
 // - O BFA NUNCA sobrescreve step/next_step — o agente controla a jornada.
-func (s *Service) processAgentResponse(ctx context.Context, customerID, query string, session *Session, resp *AgentResponse, financialCtx *FinancialContext) (*FrontendResponse, error) {
+func (s *Service) processAgentResponse(ctx context.Context, customerID, query string, session *Session, resp *AgentResponse, financialCtx *FinancialContext, isAuthenticated bool) (*FrontendResponse, error) {
 	step := derefStr(resp.Step)
 	nextStep := derefStr(resp.NextStep)
+
+	// Guarda: bloquear onboarding para usuários autenticados.
+	// Abertura de conta só pode acontecer no endpoint anônimo (POST /v1/chat).
+	// O frontend informa se o usuário está logado via is_authenticated no body.
+	if isAuthenticated && (resp.Context == "onboarding" || step == "welcome") {
+		s.logger.Warn("⛔ onboarding bloqueado — usuário já autenticado",
+			zap.String("customer_id", customerID),
+		)
+		return &FrontendResponse{
+			Answer:  "Você já possui uma conta ativa. Posso ajudar com outra coisa?",
+			Context: "geral",
+		}, nil
+	}
 
 	// Caso 1: step vazio → conversa normal, não é onboarding
 	if step == "" {
@@ -201,7 +227,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 				// 2. Saiba que o BFA já aceitou e salvou o campo
 				// 3. Avance para o próximo campo sem re-validar
 				retryResp, retryErr := s.callAgent(ctx, customerID, query, session,
-					"CAMPO_ACEITO_BFA: o campo '"+step+"' foi validado e salvo pelo BFA. Avance para o próximo campo.", nil)
+					"CAMPO_ACEITO_BFA: o campo '"+step+"' foi validado e salvo pelo BFA. Avance para o próximo campo.", nil, isAuthenticated)
 				if retryErr != nil {
 					return nil, fmt.Errorf("agent retry after BFA override: %w", retryErr)
 				}
@@ -240,7 +266,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 				}, nil
 			}
 
-			errorResp, retryErr := s.callAgent(ctx, customerID, query, session, validationErr.Error(), nil)
+			errorResp, retryErr := s.callAgent(ctx, customerID, query, session, validationErr.Error(), nil, isAuthenticated)
 			if retryErr != nil {
 				return nil, fmt.Errorf("agent error-format call failed: %w", retryErr)
 			}
@@ -267,7 +293,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 			s.logger.Error("failed to save field", zap.String("step", step), zap.Error(saveErr))
 		}
 
-		return s.checkCompletion(ctx, customerID, query, session, resp)
+		return s.checkCompletion(ctx, customerID, query, session, resp, isAuthenticated)
 	}
 
 	// Validar a query do usuário usando o step que o AGENTE informou
@@ -304,7 +330,7 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 		}
 
 		// Reenviar ao agente com validation_error para que reformate
-		errorResp, retryErr := s.callAgent(ctx, customerID, query, session, err.Error(), nil)
+		errorResp, retryErr := s.callAgent(ctx, customerID, query, session, err.Error(), nil, isAuthenticated)
 		if retryErr != nil {
 			return nil, fmt.Errorf("agent retry call failed: %w", retryErr)
 		}
@@ -330,13 +356,13 @@ func (s *Service) processAgentResponse(ctx context.Context, customerID, query st
 	s.appendHistory(session, query, resp.Answer, &step, boolPtr(true))
 
 	// Verificar se o agente disse que completou
-	return s.checkCompletion(ctx, customerID, query, session, resp)
+	return s.checkCompletion(ctx, customerID, query, session, resp, isAuthenticated)
 }
 
 // checkCompletion verifica se o agente retornou next_step=completed.
 // Se sim e todos os campos estão preenchidos, finaliza a conta.
 // Caso contrário, faz pass-through da resposta do agente.
-func (s *Service) checkCompletion(ctx context.Context, customerID, query string, session *Session, resp *AgentResponse) (*FrontendResponse, error) {
+func (s *Service) checkCompletion(ctx context.Context, customerID, query string, session *Session, resp *AgentResponse, isAuthenticated bool) (*FrontendResponse, error) {
 	nextStep := derefStr(resp.NextStep)
 
 	if nextStep != "completed" {
@@ -353,7 +379,7 @@ func (s *Service) checkCompletion(ctx context.Context, customerID, query string,
 		validationMsg := fmt.Sprintf("Não é possível finalizar. Campos faltando: %s",
 			strings.Join(missing, ", "))
 
-		retryResp, retryErr := s.callAgent(ctx, customerID, query, session, validationMsg, nil)
+		retryResp, retryErr := s.callAgent(ctx, customerID, query, session, validationMsg, nil, isAuthenticated)
 		if retryErr != nil {
 			return nil, fmt.Errorf("agent retry missing fields: %w", retryErr)
 		}

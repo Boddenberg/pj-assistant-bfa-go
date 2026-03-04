@@ -36,9 +36,10 @@ func Handler(svc *Service, logger *zap.Logger) http.HandlerFunc {
 		logger.Info("⬇️  request recebida do frontend",
 			zap.String("customer_id", customerID),
 			zap.String("query", req.Query),
+			zap.Bool("is_authenticated", req.IsAuthenticated),
 		)
 
-		resp, err := svc.ProcessTurn(r.Context(), customerID, req.Query)
+		resp, err := svc.ProcessTurn(r.Context(), customerID, req.Query, req.IsAuthenticated)
 		if err != nil {
 			logger.Error("chat: process turn failed", zap.Error(err))
 			writeJSON(w, http.StatusBadGateway, map[string]string{
@@ -51,7 +52,7 @@ func Handler(svc *Service, logger *zap.Logger) http.HandlerFunc {
 			zap.String("answer", truncate(resp.Answer, 120)),
 			zap.Any("step", resp.Step),
 			zap.Any("next_step", resp.NextStep),
-			zap.Any("context", resp.Context),
+			zap.String("context", resp.Context),
 		)
 
 		writeJSON(w, http.StatusOK, resp)

@@ -46,64 +46,101 @@ func NewClient(httpClient *http.Client, baseURL, apiKey, serviceRoleKey string, 
 }
 
 // doRequest executes an authenticated request to Supabase PostgREST.
+// Includes automatic retry (up to 2 retries) with exponential backoff for transient errors.
 func (c *Client) doRequest(ctx context.Context, method, path string) ([]byte, error) {
 	url := fmt.Sprintf("%s/rest/v1/%s", c.baseURL, path)
-	req, err := http.NewRequestWithContext(ctx, method, url, nil)
-	if err != nil {
-		c.logger.Error("supabase: failed to create request",
-			zap.String("method", method),
-			zap.String("path", path),
-			zap.Error(err),
-		)
-		return nil, err
-	}
 
-	req.Header.Set("apikey", c.apiKey)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.serviceRoleKey))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Prefer", "return=representation")
+	const maxRetries = 2
+	backoff := 200 * time.Millisecond
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		c.logger.Error("supabase: request failed",
-			zap.String("method", method),
-			zap.String("path", path),
-			zap.Error(err),
-		)
-		return nil, err
-	}
-	defer resp.Body.Close()
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			c.logger.Warn("supabase: retry",
+				zap.String("method", method),
+				zap.String("path", path),
+				zap.Int("attempt", attempt+1),
+				zap.Duration("backoff", backoff),
+				zap.Error(lastErr),
+			)
+			select {
+			case <-time.After(backoff):
+				backoff *= 2 // exponential backoff
+			case <-ctx.Done():
+				return nil, fmt.Errorf("supabase: context cancelled during retry: %w", ctx.Err())
+			}
+		}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		c.logger.Error("supabase: failed to read response body",
-			zap.String("method", method),
-			zap.String("path", path),
-			zap.Error(err),
-		)
-		return nil, err
-	}
+		req, err := http.NewRequestWithContext(ctx, method, url, nil)
+		if err != nil {
+			c.logger.Error("supabase: failed to create request",
+				zap.String("method", method),
+				zap.String("path", path),
+				zap.Error(err),
+			)
+			return nil, err // not retryable
+		}
 
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNoContent {
-		return nil, nil // no data
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		c.logger.Warn("supabase: non-2xx response",
+		req.Header.Set("apikey", c.apiKey)
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.serviceRoleKey))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Prefer", "return=representation")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			c.logger.Error("supabase: request failed",
+				zap.String("method", method),
+				zap.String("path", path),
+				zap.Int("attempt", attempt+1),
+				zap.Error(err),
+			)
+			continue // retry on network error / timeout
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("read body: %w", err)
+			continue // retry
+		}
+
+		if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNoContent {
+			return nil, nil // no data
+		}
+
+		// Retry on 5xx (server error) or 429 (rate limit)
+		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+			lastErr = fmt.Errorf("supabase returned status %d: %s", resp.StatusCode, string(body))
+			c.logger.Warn("supabase: retryable status",
+				zap.String("method", method),
+				zap.String("path", path),
+				zap.Int("status", resp.StatusCode),
+				zap.Int("attempt", attempt+1),
+			)
+			continue // retry
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			c.logger.Warn("supabase: non-2xx response",
+				zap.String("method", method),
+				zap.String("path", path),
+				zap.Int("status", resp.StatusCode),
+				zap.String("body", string(body)),
+			)
+			return nil, fmt.Errorf("supabase returned status %d: %s", resp.StatusCode, string(body))
+		}
+
+		c.logger.Debug("supabase: request OK",
 			zap.String("method", method),
 			zap.String("path", path),
 			zap.Int("status", resp.StatusCode),
-			zap.String("body", string(body)),
 		)
-		return nil, fmt.Errorf("supabase returned status %d: %s", resp.StatusCode, string(body))
+
+		return body, nil
 	}
 
-	c.logger.Debug("supabase: request OK",
-		zap.String("method", method),
-		zap.String("path", path),
-		zap.Int("status", resp.StatusCode),
-	)
-
-	return body, nil
+	return nil, fmt.Errorf("supabase: request failed after %d attempts: %w", maxRetries+1, lastErr)
 }
 
 /* Profile API (implements port.ProfileFetcher) */
